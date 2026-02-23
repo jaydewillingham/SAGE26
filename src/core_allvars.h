@@ -514,7 +514,6 @@ struct params
     int32_t    DiskInstabilityOn;
     int32_t    CGMrecipeOn;
     int32_t    FIREmodeOn;
-    int32_t    CGMrecipeSAGEOn;
     int32_t    FeedbackFreeModeOn;
     int32_t    BulgeSizeOn;
     int32_t    H2DiskAreaOption;  // 0 = π*r_s², 1 = π*(3*r_s)², 2 = 2π*r_s² (central Σ₀)
