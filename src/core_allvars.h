@@ -468,6 +468,7 @@ struct params
     int32_t    H2DiskAreaOption;  // 0 = π*r_s², 1 = π*(3*r_s)², 2 = 2π*r_s² (central Σ₀)
     int32_t    SaveFullSFH;       // 0 = save averaged SFR (default), 1 = save full SfrDisk[STEPS] and SfrBulge[STEPS] arrays
     int32_t    TrackICSAssembly;  // 0 = off, 1 = track ICS_disrupt and ICS_accrete
+    int32_t    QuasarEfficiencyMode;  // 0 = fixed efficiency (η=0.1), 1 = Eddington ratio-dependent
 
     double RecycleFraction;
     double Yield;
@@ -482,6 +483,9 @@ struct params
     double RadioModeEfficiency;
     double QuasarModeEfficiency;
     double BlackHoleGrowthRate;
+    double InstabilityBHGrowthRate;    // Fraction of unstable gas accreted by BH during disk instabilities
+    double QuasarRadiativeEfficiency;  // Base radiative efficiency for quasar mode (default 0.1)
+    double ADAFCriticalEddington;      // Critical Eddington ratio for ADAF transition (default 0.01)
     double Reionization_z0;
     double Reionization_zr;
     double ThresholdSatDisruption;

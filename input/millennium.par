@@ -57,8 +57,8 @@ CGMDensityProfile     0   %0: uniform; 1: NFW; 2: beta-profile (β=2/3)
 FIREmodeOn            1   %0: switch off
 FeedbackFreeModeOn    1   %0: switch off
 BulgeSizeOn           3   %0: switch off; 1: Shen eq. 33; 2: Shen eq. 32; 3: Tonini
-SaveFullSFH           0   %0: switch off
-TrackICSAssembly      0   %0: switch off; 1: track ICS_disrupt and ICS_accrete
+SaveFullSFH           1   %0: switch off
+TrackICSAssembly      1   %0: switch off; 1: track ICS_disrupt and ICS_accrete
 
 %------------------------------------------
 %----- SAGE model parameters --------------
@@ -76,7 +76,12 @@ ReIncorporationFactor   0.15    %fraction of ejected mass reincorporated per dyn
 
 RadioModeEfficiency     0.08  %AGN radio mode efficiency (AGNrecipeOn=2)
 QuasarModeEfficiency    0.005   %AGN quasar mode wind heating efficiency (AGNrecipeOn>0)
-BlackHoleGrowthRate     0.015 %fraction of cold gas added to the BH during mergers (AGNrecipeOn>0)
+BlackHoleGrowthRate     0.015 %fraction of cold gas accreted by BH during mergers (AGNrecipeOn>0)
+InstabilityBHGrowthRate 0.015 %fraction of unstable gas accreted by BH during disk instabilities (DiskInstabilityOn=1)
+
+QuasarEfficiencyMode    1     %0: fixed radiative efficiency; 1: Eddington ratio-dependent
+QuasarRadiativeEfficiency 0.1 %base radiative efficiency for quasar mode thin disk
+ADAFCriticalEddington   0.01  %Eddington ratio below which ADAF (low efficiency) regime applies
 
 ThreshMajorMerger       0.3   %major merger when mass ratio greater than this
 ThresholdSatDisruption  1.0   %Mvir-to-baryonic mass ratio threshold for satellite merger or disruption

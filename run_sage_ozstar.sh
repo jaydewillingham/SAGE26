@@ -1,6 +1,7 @@
 #!/bin/bash -l
 #SBATCH --job-name=SAGE_millennium
 #SBATCH --mail-type=ALL
+#SBATCH --output=slurm-sage-%A_%a.out
 #SBATCH --time=8:00:00
 #SBATCH --ntasks-per-node=12
 #SBATCH --mem-per-cpu=50GB

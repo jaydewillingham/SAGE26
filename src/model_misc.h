@@ -35,6 +35,10 @@ extern "C" {
 
     extern float calculate_H2_fraction_KD12(const float surface_density, const float metallicity, const float clumping_factor);
 
+    /* Black hole radiative efficiency for quasar mode */
+    extern double get_quasar_radiative_efficiency(const double accretion_rate, const double BHmass,
+                                                   const double dt, const struct params *run_params);
+
 
 #ifdef __cplusplus
 }
