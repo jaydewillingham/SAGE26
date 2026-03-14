@@ -207,12 +207,6 @@ int join_galaxies_of_progenitors(const int halonr, const int ngalstart, int *gal
                     }
                     galaxies[ngal].Mvir = get_virial_mass(halonr, halos, run_params);
 
-                    // Independent BH seeding: seed BH if halo grew above threshold and has no BH
-                    if(run_params->BHSeedingOn == 1 && galaxies[ngal].BlackHoleMass == 0.0 &&
-                       galaxies[ngal].Mvir > run_params->BHSeedMinHaloMass) {
-                        galaxies[ngal].BlackHoleMass = run_params->BHSeedMass;
-                    }
-
                     galaxies[ngal].Cooling = 0.0;
                     galaxies[ngal].Heating = 0.0;
                     galaxies[ngal].QuasarModeBHaccretionMass = 0.0;
@@ -414,11 +408,6 @@ int evolve_galaxies(const int halonr, const int ngal, int *numgals, int *maxgals
             } else {
                 coolingGas = cooling_recipe(p, deltaT / effective_steps, galaxies, run_params);
                 cool_gas_onto_galaxy(p, coolingGas, galaxies);
-            }
-
-            // SHARK-style continuous BH accretion from hot halo (independent of AGN heating)
-            if(run_params->HotHaloBHaccretionOn == 1) {
-                hot_halo_BH_accretion(p, deltaT / effective_steps, galaxies, run_params);
             }
 
             // stars form and then explode!

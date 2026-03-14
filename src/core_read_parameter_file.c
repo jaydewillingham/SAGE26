@@ -201,49 +201,6 @@ int read_parameter_file(const char *fname, struct params *run_params)
     ParamAddr[NParam] = &(run_params->BlackHoleGrowthRate);
     ParamID[NParam++] = DOUBLE;
 
-    strncpy(ParamTag[NParam], "InstabilityBHGrowthRate", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->InstabilityBHGrowthRate);
-    ParamID[NParam++] = DOUBLE;
-
-    strncpy(ParamTag[NParam], "QuasarRadiativeEfficiency", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->QuasarRadiativeEfficiency);
-    ParamID[NParam++] = DOUBLE;
-
-    strncpy(ParamTag[NParam], "ADAFCriticalEddington", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->ADAFCriticalEddington);
-    ParamID[NParam++] = DOUBLE;
-
-    // BH seeding parameters
-    strncpy(ParamTag[NParam], "BHSeedingOn", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->BHSeedingOn);
-    ParamID[NParam++] = INT;
-
-    strncpy(ParamTag[NParam], "BHSeedMass", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->BHSeedMass);
-    ParamID[NParam++] = DOUBLE;
-
-    strncpy(ParamTag[NParam], "BHSeedMinHaloMass", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->BHSeedMinHaloMass);
-    ParamID[NParam++] = DOUBLE;
-
-    // Velocity-dependent BH growth parameters (SHARK-style)
-    strncpy(ParamTag[NParam], "BHGrowthVelocityDep", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->BHGrowthVelocityDep);
-    ParamID[NParam++] = INT;
-
-    strncpy(ParamTag[NParam], "BHGrowthVelocityScale", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->BHGrowthVelocityScale);
-    ParamID[NParam++] = DOUBLE;
-
-    // Hot halo BH accretion parameters (SHARK-style continuous growth)
-    strncpy(ParamTag[NParam], "HotHaloBHaccretionOn", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->HotHaloBHaccretionOn);
-    ParamID[NParam++] = INT;
-
-    strncpy(ParamTag[NParam], "HotHaloBHaccretionKappa", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->HotHaloBHaccretionKappa);
-    ParamID[NParam++] = DOUBLE;
-
     strncpy(ParamTag[NParam], "RadioModeEfficiency", MAXTAGLEN);
     ParamAddr[NParam] = &(run_params->RadioModeEfficiency);
     ParamID[NParam++] = DOUBLE;
@@ -320,11 +277,7 @@ int read_parameter_file(const char *fname, struct params *run_params)
     ParamAddr[NParam] = &(run_params->TrackICSAssembly);
     ParamID[NParam++] = INT;
 
-    strncpy(ParamTag[NParam], "QuasarEfficiencyMode", MAXTAGLEN);
-    ParamAddr[NParam] = &(run_params->QuasarEfficiencyMode);
-    ParamID[NParam++] = INT;
-
-
+    
     used_tag = mymalloc(sizeof(int) * NParam);
     for(int i=0; i<NParam; i++) {
         used_tag[i]=1;

@@ -468,7 +468,6 @@ struct params
     int32_t    H2DiskAreaOption;  // 0 = π*r_s², 1 = π*(3*r_s)², 2 = 2π*r_s² (central Σ₀)
     int32_t    SaveFullSFH;       // 0 = save averaged SFR (default), 1 = save full SfrDisk[STEPS] and SfrBulge[STEPS] arrays
     int32_t    TrackICSAssembly;  // 0 = off, 1 = track ICS_disrupt and ICS_accrete
-    int32_t    QuasarEfficiencyMode;  // 0 = fixed efficiency (η=0.1), 1 = Eddington ratio-dependent
 
     double RecycleFraction;
     double Yield;
@@ -483,23 +482,6 @@ struct params
     double RadioModeEfficiency;
     double QuasarModeEfficiency;
     double BlackHoleGrowthRate;
-    double InstabilityBHGrowthRate;    // Fraction of unstable gas accreted by BH during disk instabilities
-    double QuasarRadiativeEfficiency;  // Base radiative efficiency for quasar mode (default 0.1)
-    double ADAFCriticalEddington;      // Critical Eddington ratio for ADAF transition (default 0.01)
-
-    // BH seeding parameters (independent of AGN recipe)
-    int32_t BHSeedingOn;               // 0: no seeding; 1: seed BHs in halos above threshold
-    double BHSeedMass;                 // Seed BH mass in units of 10^10 Msun/h (e.g., 1e-6 = 10^4 Msun/h)
-    double BHSeedMinHaloMass;          // Minimum halo mass for seeding in units of 10^10 Msun/h
-
-    // Velocity-dependent BH growth (SHARK-style)
-    int32_t BHGrowthVelocityDep;       // 0: off (fixed efficiency); 1: velocity-dependent efficiency
-    double BHGrowthVelocityScale;      // Characteristic velocity in km/s (default 400, like SHARK)
-
-    // Hot halo BH accretion (SHARK-style continuous growth)
-    int32_t HotHaloBHaccretionOn;      // 0: off; 1: continuous BH accretion from hot halo
-    double HotHaloBHaccretionKappa;    // Efficiency parameter (SHARK default ~0.005)
-
     double Reionization_z0;
     double Reionization_zr;
     double ThresholdSatDisruption;

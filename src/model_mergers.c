@@ -161,7 +161,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     // grow black hole through accretion from cold disk during mergers
     if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, dt, galaxies, run_params);
+        grow_black_hole(merger_centralgal, mass_ratio, galaxies, run_params);
     }
 
     // Determine which bulge component will receive burst stars
@@ -221,26 +221,13 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
 
 
-void grow_black_hole(const int merger_centralgal, const double mass_ratio, const double dt, struct GALAXY *galaxies, const struct params *run_params)
+void grow_black_hole(const int merger_centralgal, const double mass_ratio, struct GALAXY *galaxies, const struct params *run_params)
 {
     double BHaccrete, metallicity;
 
     if(galaxies[merger_centralgal].ColdGas > 0.0) {
-        // Calculate BH accretion during merger
-        // Velocity dependence: efficiency = f / (1 + (v_scale/Vvir)^2)
-        // This suppresses BH growth in low-mass halos (low Vvir) where feedback is strong
-        // Original SAGE always had this with v_scale=280 km/s hardcoded
-        double v_scale = 280.0;  // Original hardcoded value
-        if(run_params->BHGrowthVelocityDep == 1) {
-            v_scale = run_params->BHGrowthVelocityScale;  // Use configurable value
-        }
-
-        double velocity_factor = 1.0;
-        if(galaxies[merger_centralgal].Vvir > 0.0) {
-            velocity_factor = 1.0 / (1.0 + SQR(v_scale / galaxies[merger_centralgal].Vvir));
-        }
-
-        BHaccrete = run_params->BlackHoleGrowthRate * mass_ratio * velocity_factor * galaxies[merger_centralgal].ColdGas;
+        BHaccrete = run_params->BlackHoleGrowthRate * mass_ratio /
+            (1.0 + SQR(280.0 / galaxies[merger_centralgal].Vvir)) * galaxies[merger_centralgal].ColdGas;
 
         // cannot accrete more gas than is available!
         if(BHaccrete > galaxies[merger_centralgal].ColdGas) {
@@ -258,64 +245,16 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
 
         galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
 
-        quasar_mode_wind(merger_centralgal, BHaccrete, dt, galaxies, run_params);
+        quasar_mode_wind(merger_centralgal, BHaccrete, galaxies, run_params);
     }
 }
 
 
-void grow_black_hole_instability(const int gal, const double unstable_gas, const double dt,
-                                  struct GALAXY *galaxies, const struct params *run_params)
+
+void quasar_mode_wind(const int gal, const double BHaccrete, struct GALAXY *galaxies, const struct params *run_params)
 {
-    // Dedicated BH growth model for disk instabilities
-    // Unlike merger-driven growth, this uses a simple efficiency parameter
-    // applied directly to the unstable gas mass (no mass_ratio substitution)
-    // Note: No velocity dependence here - instabilities occur in massive disk galaxies
-    // where the disk becomes self-gravitating, independent of halo velocity
-
-    if(unstable_gas <= 0.0 || galaxies[gal].ColdGas <= 0.0) {
-        return;
-    }
-
-    double BHaccrete = run_params->InstabilityBHGrowthRate * unstable_gas;
-
-    // Cannot accrete more gas than is unstable
-    if(BHaccrete > unstable_gas) {
-        BHaccrete = unstable_gas;
-    }
-
-    // Cannot accrete more gas than is available
-    if(BHaccrete > galaxies[gal].ColdGas) {
-        BHaccrete = galaxies[gal].ColdGas;
-    }
-
-    // Update gas reservoirs
-    const double metallicity = get_metallicity(galaxies[gal].ColdGas, galaxies[gal].MetalsColdGas);
-    galaxies[gal].BlackHoleMass += BHaccrete;
-    galaxies[gal].ColdGas -= BHaccrete;
-    galaxies[gal].MetalsColdGas -= metallicity * BHaccrete;
-
-    // BUG FIX: Ensure metals don't go negative due to numerical precision
-    if(galaxies[gal].MetalsColdGas < 0.0) {
-        galaxies[gal].MetalsColdGas = 0.0;
-    }
-
-    // Track quasar mode accretion
-    galaxies[gal].QuasarModeBHaccretionMass += BHaccrete;
-
-    // Trigger quasar mode wind feedback (same as merger-driven accretion)
-    quasar_mode_wind(gal, BHaccrete, dt, galaxies, run_params);
-}
-
-
-void quasar_mode_wind(const int gal, const double BHaccrete, const double dt, struct GALAXY *galaxies, const struct params *run_params)
-{
-    // Calculate radiative efficiency based on Eddington ratio
-    // For quasar mode (radiation-driven winds), efficiency matters
-    const double eta = get_quasar_radiative_efficiency(BHaccrete, galaxies[gal].BlackHoleMass, dt, run_params);
-
-    // Work out total energy in quasar wind (eta*m*c^2)
-    const double c_code = C / run_params->UnitVelocity_in_cm_per_s;
-    const double quasar_energy = run_params->QuasarModeEfficiency * eta * BHaccrete * c_code * c_code;
+    // work out total energy in quasar wind (eta*m*c^2)
+    const double quasar_energy = run_params->QuasarModeEfficiency * 0.1 * BHaccrete * (C / run_params->UnitVelocity_in_cm_per_s) * (C / run_params->UnitVelocity_in_cm_per_s);
     const double cold_gas_energy = 0.5 * galaxies[gal].ColdGas * galaxies[gal].Vvir * galaxies[gal].Vvir;
 
     // compare quasar wind and cold gas energies and eject cold

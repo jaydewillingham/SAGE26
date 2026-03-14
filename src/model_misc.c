@@ -53,12 +53,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].HotGas = 0.0;
     galaxies[p].EjectedMass = 0.0;
     galaxies[p].BlackHoleMass = 0.0;
-
-    // Independent BH seeding: seed BHs in halos above threshold mass
-    if(run_params->BHSeedingOn == 1 && galaxies[p].Mvir > run_params->BHSeedMinHaloMass) {
-        galaxies[p].BlackHoleMass = run_params->BHSeedMass;
-    }
-
+    
     galaxies[p].ICS = 0.0;
     galaxies[p].CGMgas = 0.0;
     galaxies[p].H2gas = 0.0;
@@ -712,81 +707,6 @@ float calculate_H2_fraction_KD12(const float surface_density, const float metall
     // Ensure fraction stays within bounds
     if (f_H2 < 0.0) f_H2 = 0.0;
     if (f_H2 > 1.0) f_H2 = 1.0;
-
+    
     return f_H2;
-}
-
-
-double get_quasar_radiative_efficiency(const double accretion_rate, const double BHmass,
-                                        const double dt, const struct params *run_params)
-{
-    // Calculate the radiative efficiency for quasar mode based on Eddington ratio
-    //
-    // Three regimes:
-    // 1. ADAF (λ_Edd < λ_crit): η = η_0 × (λ/λ_crit) - radiatively inefficient
-    // 2. Thin disk (λ_crit < λ < 1): η = η_0 - standard efficiency
-    // 3. Super-Eddington (λ > 1): η = η_0 / (1 + ln(λ)) - photon trapping
-    //
-    // Parameters:
-    //   accretion_rate: mass accreted this timestep (code units: 10^10 Msun/h)
-    //   BHmass: current black hole mass (code units: 10^10 Msun/h)
-    //   dt: timestep (code units)
-    //
-    // Returns: radiative efficiency η (dimensionless)
-
-    const double eta_0 = run_params->QuasarRadiativeEfficiency;
-
-    // If mode is off, return fixed efficiency
-    if(run_params->QuasarEfficiencyMode == 0) {
-        return eta_0;
-    }
-
-    // Handle edge cases
-    if(accretion_rate <= 0.0 || BHmass <= 0.0 || dt <= 0.0) {
-        return eta_0;
-    }
-
-    // Calculate Eddington luminosity and corresponding accretion rate
-    // L_Edd = 1.26e38 × (M_BH/M_sun) erg/s
-    // Mdot_Edd = L_Edd / (η_0 × c²)
-    // In code units: Mdot_Edd [10^10 Msun/h / code_time]
-    //              = 2.2e-8 × (M_BH_Msun) / η_0 × [Msun/yr] × conversion
-
-    const double h = run_params->Hubble_h;
-    const double BHmass_Msun = BHmass * 1.0e10 / h;
-
-    // Mdot_Edd in Msun/yr
-    const double Mdot_Edd_Msun_yr = 2.2e-8 * BHmass_Msun / eta_0;
-
-    // Convert accretion_rate to Msun/yr for comparison
-    // accretion_rate is mass per timestep, dt is in code time units
-    // UnitTime_in_Megayears gives us the conversion
-    const double dt_yr = dt * run_params->UnitTime_in_Megayears * 1.0e6;
-    const double Mdot_Msun_yr = (accretion_rate * 1.0e10 / h) / dt_yr;
-
-    // Calculate Eddington ratio
-    const double lambda = Mdot_Msun_yr / Mdot_Edd_Msun_yr;
-
-    // Get critical Eddington ratio for ADAF transition
-    const double lambda_crit = run_params->ADAFCriticalEddington;
-
-    double eta;
-
-    if(lambda < lambda_crit) {
-        // ADAF regime: radiatively inefficient
-        // Most energy advected into BH rather than radiated
-        eta = eta_0 * (lambda / lambda_crit);
-    } else if(lambda > 1.0) {
-        // Super-Eddington: photon trapping reduces effective efficiency
-        eta = eta_0 / (1.0 + log(lambda));
-    } else {
-        // Standard thin disk
-        eta = eta_0;
-    }
-
-    // Apply physical bounds
-    if(eta < 1.0e-4) eta = 1.0e-4;  // Minimum ~0.01% efficiency
-    if(eta > 0.42) eta = 0.42;       // Maximum for Kerr BH
-
-    return eta;
 }

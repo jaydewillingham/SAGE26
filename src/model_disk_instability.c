@@ -89,8 +89,7 @@ void check_disk_instability(const int p, const int centralgal, const int halonr,
         
         }
 
-        // Burst excess gas and feed black hole
-        // Uses dedicated instability model with separate efficiency parameter
+        // burst excess gas and feed black hole (really need a dedicated model for bursts and BH growth here)
         // BUG FIX: Also check ColdGas > 0 to avoid division by zero
         if(unstable_gas > 0.0 && galaxies[p].ColdGas > 0.0) {
 #ifdef VERBOSE
@@ -101,16 +100,12 @@ void check_disk_instability(const int p, const int centralgal, const int halonr,
             }
 #endif
 
-            // Calculate unstable gas fraction BEFORE BH accretion modifies ColdGas
             const double unstable_gas_fraction = unstable_gas / galaxies[p].ColdGas;
-
-            // Feed black hole using dedicated instability model
             if(run_params->AGNrecipeOn > 0) {
-                grow_black_hole_instability(p, unstable_gas, dt, galaxies, run_params);
+                grow_black_hole(p, unstable_gas_fraction, galaxies, run_params);
             }
 
-            // Trigger starburst (uses pre-calculated fraction to avoid division issues)
-            collisional_starburst_recipe(unstable_gas_fraction, p, centralgal, time, dt, halonr, 1, step,
+            collisional_starburst_recipe(unstable_gas_fraction, p, centralgal, time, dt, halonr, 1, step, 
                              0, galaxies[p].DiskScaleRadius,  // burst_to_merger_bulge=0, use current disc radius
                              galaxies, run_params);
         }
