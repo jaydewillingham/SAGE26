@@ -599,9 +599,12 @@ double cooling_recipe_cgm(const int gal, const double dt, struct GALAXY *galaxie
     x /= (run_params->UnitDensity_in_cgs * run_params->UnitTime_in_s);         // now in internal units
 
     // If AGN feedback is enabled, apply heating to reduce coolingGas before proceeding
+    // Only apply CGM AGN heating for CGM-regime haloes (Regime == 0)
+    // Hot-regime haloes already get AGN heating from HotGas via do_AGN_heating
 
-    if(run_params->AGNrecipeOn > 0 && coolingGas > 0.0 && run_params->BHSeedingOn == 1) {
-			coolingGas = do_AGN_heating_cgm(coolingGas, gal, dt, x, r_cool, galaxies, run_params);
+    if(run_params->AGNrecipeOn > 0 && coolingGas > 0.0 && run_params->BHSeedingOn == 1
+       && galaxies[gal].Regime == 0) {
+        coolingGas = do_AGN_heating_cgm(coolingGas, gal, dt, x, r_cool, galaxies, run_params);
     }
 
     // ========================================================================
@@ -672,8 +675,11 @@ double cooling_recipe_regime_aware(const int gal, const double dt, struct GALAXY
     }
 
     // Now apply the cooling directly to preserve the physics-based split
-    // Apply CGM cooling
+    // Apply CGM cooling (clamp to available CGMgas after AGN accretion)
     if(cgm_cooling > 0.0) {
+        if(cgm_cooling > galaxies[gal].CGMgas) {
+            cgm_cooling = galaxies[gal].CGMgas;
+        }
         const double metallicity = get_metallicity(galaxies[gal].CGMgas, galaxies[gal].MetalsCGMgas);
         galaxies[gal].ColdGas += cgm_cooling;
         galaxies[gal].MetalsColdGas += metallicity * cgm_cooling;

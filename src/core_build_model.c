@@ -208,9 +208,29 @@ int join_galaxies_of_progenitors(const int halonr, const int ngalstart, int *gal
                     galaxies[ngal].Mvir = get_virial_mass(halonr, halos, run_params);
 
                     // Independent BH seeding: seed BH if halo grew above threshold and has no BH
+                    // Seed mass must be taken from gas to conserve baryons
                     if(run_params->BHSeedingOn == 1 && galaxies[ngal].BlackHoleMass == 0.0 &&
                        galaxies[ngal].Mvir > run_params->BHSeedMinHaloMass) {
-                        galaxies[ngal].BlackHoleMass = run_params->BHSeedMass;
+                        double seed_mass = run_params->BHSeedMass;
+
+                        // Take seed mass from available gas reservoir (CGMgas -> HotGas -> ColdGas)
+                        if(galaxies[ngal].CGMgas >= seed_mass) {
+                            double metallicity = get_metallicity(galaxies[ngal].CGMgas, galaxies[ngal].MetalsCGMgas);
+                            galaxies[ngal].CGMgas -= seed_mass;
+                            galaxies[ngal].MetalsCGMgas -= metallicity * seed_mass;
+                            galaxies[ngal].BlackHoleMass = seed_mass;
+                        } else if(galaxies[ngal].HotGas >= seed_mass) {
+                            double metallicity = get_metallicity(galaxies[ngal].HotGas, galaxies[ngal].MetalsHotGas);
+                            galaxies[ngal].HotGas -= seed_mass;
+                            galaxies[ngal].MetalsHotGas -= metallicity * seed_mass;
+                            galaxies[ngal].BlackHoleMass = seed_mass;
+                        } else if(galaxies[ngal].ColdGas >= seed_mass) {
+                            double metallicity = get_metallicity(galaxies[ngal].ColdGas, galaxies[ngal].MetalsColdGas);
+                            galaxies[ngal].ColdGas -= seed_mass;
+                            galaxies[ngal].MetalsColdGas -= metallicity * seed_mass;
+                            galaxies[ngal].BlackHoleMass = seed_mass;
+                        }
+                        // If no gas available, don't seed (galaxy too gas-poor)
                     }
 
                     galaxies[ngal].Cooling = 0.0;
@@ -487,7 +507,7 @@ int evolve_galaxies(const int halonr, const int ngal, int *numgals, int *maxgals
 
         if(p != centralgal) {
             galaxies[centralgal].TotalSatelliteBaryons +=
-                (galaxies[p].StellarMass + galaxies[p].BlackHoleMass + galaxies[p].ColdGas + galaxies[p].HotGas);
+                (galaxies[p].StellarMass + galaxies[p].BlackHoleMass + galaxies[p].ColdGas + galaxies[p].HotGas + galaxies[p].CGMgas);
         }
     }
 

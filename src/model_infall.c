@@ -297,7 +297,7 @@ void add_infall_to_hot(const int gal, double infallingGas, struct GALAXY *galaxi
     if(run_params->CGMrecipeOn == 1) {
         if(galaxies[gal].Regime == 0) {
             // CGM-regime: use CGMgas reservoir
-            
+
             // if the halo has lost mass, subtract from CGM metals first
             if(infallingGas < 0.0 && galaxies[gal].MetalsCGMgas > 0.0) {
                 metallicity = get_metallicity(galaxies[gal].CGMgas, galaxies[gal].MetalsCGMgas);
@@ -307,11 +307,17 @@ void add_infall_to_hot(const int gal, double infallingGas, struct GALAXY *galaxi
 
             // add (subtract) the ambient (enriched) infalling gas to the CGM
             galaxies[gal].CGMgas += infallingGas;
-            if(galaxies[gal].CGMgas < 0.0) galaxies[gal].CGMgas = galaxies[gal].MetalsCGMgas = 0.0;
-            
+            if(galaxies[gal].CGMgas < 0.0) {
+                // Track remaining negative that couldn't be absorbed
+                infallingGas = galaxies[gal].CGMgas;
+                galaxies[gal].CGMgas = galaxies[gal].MetalsCGMgas = 0.0;
+            } else {
+                infallingGas = 0.0;
+            }
+
         } else {
             // Hot-ICM-regime: use HotGas reservoir
-            
+
             // if the halo has lost mass, subtract from hot metals first
             if(infallingGas < 0.0 && galaxies[gal].MetalsHotGas > 0.0) {
                 metallicity = get_metallicity(galaxies[gal].HotGas, galaxies[gal].MetalsHotGas);
@@ -321,11 +327,17 @@ void add_infall_to_hot(const int gal, double infallingGas, struct GALAXY *galaxi
 
             // add (subtract) the ambient (enriched) infalling gas to the hot component
             galaxies[gal].HotGas += infallingGas;
-            if(galaxies[gal].HotGas < 0.0) galaxies[gal].HotGas = galaxies[gal].MetalsHotGas = 0.0;
+            if(galaxies[gal].HotGas < 0.0) {
+                // Track remaining negative that couldn't be absorbed
+                infallingGas = galaxies[gal].HotGas;
+                galaxies[gal].HotGas = galaxies[gal].MetalsHotGas = 0.0;
+            } else {
+                infallingGas = 0.0;
+            }
         }
     } else {
         // Original SAGE behavior: use HotGas reservoir
-        
+
         // if the halo has lost mass, subtract hot metals mass next, then the hot gas
         if(infallingGas < 0.0 && galaxies[gal].MetalsHotGas > 0.0) {
             metallicity = get_metallicity(galaxies[gal].HotGas, galaxies[gal].MetalsHotGas);
@@ -335,6 +347,25 @@ void add_infall_to_hot(const int gal, double infallingGas, struct GALAXY *galaxi
 
         // add (subtract) the ambient (enriched) infalling gas to the central galaxy hot component
         galaxies[gal].HotGas += infallingGas;
-        if(galaxies[gal].HotGas < 0.0) galaxies[gal].HotGas = galaxies[gal].MetalsHotGas = 0.0;
+        if(galaxies[gal].HotGas < 0.0) {
+            // Track remaining negative that couldn't be absorbed
+            infallingGas = galaxies[gal].HotGas;
+            galaxies[gal].HotGas = galaxies[gal].MetalsHotGas = 0.0;
+        } else {
+            infallingGas = 0.0;
+        }
+    }
+
+    // If there's still remaining negative infall, absorb from ColdGas as last resort
+    // This represents gas being stripped from the disk during halo mass loss
+    if(infallingGas < 0.0 && galaxies[gal].ColdGas > 0.0) {
+        metallicity = get_metallicity(galaxies[gal].ColdGas, galaxies[gal].MetalsColdGas);
+        galaxies[gal].MetalsColdGas += infallingGas * metallicity;
+        if(galaxies[gal].MetalsColdGas < 0.0) galaxies[gal].MetalsColdGas = 0.0;
+
+        galaxies[gal].ColdGas += infallingGas;
+        if(galaxies[gal].ColdGas < 0.0) {
+            galaxies[gal].ColdGas = galaxies[gal].MetalsColdGas = 0.0;
+        }
     }
 }
