@@ -19,7 +19,7 @@ def read_hdf(file_list, snap, field):
 
 def main():
     # Configuration
-    output_dir = '../output/millennium/'
+    output_dir = './output/millennium/'
     Hubble_h = 0.73
     Snapshot = 63  # z=0
 

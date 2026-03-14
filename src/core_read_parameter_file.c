@@ -277,6 +277,18 @@ int read_parameter_file(const char *fname, struct params *run_params)
     ParamAddr[NParam] = &(run_params->TrackICSAssembly);
     ParamID[NParam++] = INT;
 
+    strncpy(ParamTag[NParam], "BHSeedingOn", MAXTAGLEN);
+    ParamAddr[NParam] = &(run_params->BHSeedingOn);
+    ParamID[NParam++] = INT;
+
+    strncpy(ParamTag[NParam], "BHSeedMass", MAXTAGLEN);
+    ParamAddr[NParam] = &(run_params->BHSeedMass);
+    ParamID[NParam++] = DOUBLE;
+
+    strncpy(ParamTag[NParam], "BHSeedMinHaloMass", MAXTAGLEN);
+    ParamAddr[NParam] = &(run_params->BHSeedMinHaloMass);
+    ParamID[NParam++] = DOUBLE;
+
     
     used_tag = mymalloc(sizeof(int) * NParam);
     for(int i=0; i<NParam; i++) {
