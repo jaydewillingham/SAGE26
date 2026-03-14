@@ -152,6 +152,80 @@ void update_bh_spin_parameter(const int gal, struct GALAXY *galaxies, const stru
 }
 
 
+double calculate_radiative_efficiency(const double spin)
+{
+    // Novikov-Thorne thin disk radiative efficiency for a Kerr black hole
+    // η = 1 - E_ISCO, where E_ISCO is the specific energy at the ISCO
+    //
+    // For a = 0 (Schwarzschild): η ≈ 0.057
+    // For a = 1 (maximal Kerr):  η ≈ 0.42 (prograde)
+    //
+    // Reference: Novikov & Thorne (1973), Bardeen et al. (1972)
+
+    if(spin <= 0.0) {
+        return 0.057;  // Schwarzschild limit
+    }
+
+    double a = spin;
+    if(a > 0.998) a = 0.998;  // Cap at near-maximal to avoid numerical issues
+
+    // Calculate ISCO radius for prograde orbits (in units of GM/c²)
+    // Using Bardeen et al. (1972) formula
+    double a2 = a * a;
+    double Z1 = 1.0 + cbrt(1.0 - a2) * (cbrt(1.0 + a) + cbrt(1.0 - a));
+    double Z2 = sqrt(3.0 * a2 + Z1 * Z1);
+    double r_isco = 3.0 + Z2 - sqrt((3.0 - Z1) * (3.0 + Z1 + 2.0 * Z2));
+
+    // Specific energy at ISCO (Bardeen et al. 1972, eq. 2.21)
+    // E_ISCO = (r_isco^2 - 2*r_isco + a*sqrt(r_isco)) / (r_isco * sqrt(r_isco^2 - 3*r_isco + 2*a*sqrt(r_isco)))
+    double sqrt_r = sqrt(r_isco);
+    double numerator = r_isco * r_isco - 2.0 * r_isco + a * sqrt_r;
+    double denominator = r_isco * sqrt(r_isco * r_isco - 3.0 * r_isco + 2.0 * a * sqrt_r);
+
+    if(denominator <= 0.0) {
+        return 0.057;  // Fallback to Schwarzschild
+    }
+
+    double E_isco = numerator / denominator;
+    double eta = 1.0 - E_isco;
+
+    // Sanity bounds
+    if(eta < 0.057) eta = 0.057;
+    if(eta > 0.42) eta = 0.42;
+
+    return eta;
+}
+
+
+double calculate_jet_efficiency(const double spin)
+{
+    // Blandford-Znajek jet efficiency
+    // The jet power scales approximately as P_jet ∝ a² for moderate spins
+    //
+    // Following Tchekhovskoy et al. (2010), the dimensionless jet efficiency is:
+    // η_jet ≈ κ * Ω_H² * (1 + 1.38*Ω_H² - 9.2*Ω_H⁴)
+    // where Ω_H = a / (2 * r_H) is the angular velocity of the horizon
+    // and r_H = 1 + sqrt(1 - a²) is the horizon radius
+    //
+    // For simplicity, we use the approximation: η_jet ≈ η_0 * a²
+    // normalized so that η_jet(a=0.9) ≈ 0.1 (typical radio-loud AGN)
+    //
+    // Reference: Blandford & Znajek (1977), Tchekhovskoy et al. (2010)
+
+    if(spin <= 0.0) {
+        return 0.0;  // No jet from non-spinning BH
+    }
+
+    double a = spin;
+    if(a > 0.998) a = 0.998;
+
+    // Simple a² scaling with normalization
+    // η_jet(a=1) ≈ 0.12, η_jet(a=0.9) ≈ 0.1
+    double eta_jet = 0.12 * a * a;
+
+    return eta_jet;
+}
+
 
 double get_disk_radius(const int halonr, const int p, const struct halo_data *halos, const struct GALAXY *galaxies)
 {

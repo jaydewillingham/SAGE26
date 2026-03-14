@@ -745,8 +745,21 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
             }
         }
 
-        // Eddington rate
-        EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (0.1 * 9e10);
+        // AGN efficiencies: spin-dependent or original fixed value
+        double eta_rad, eta_jet;
+        if(run_params->BHSpinModelOn == 1) {
+            // Spin-dependent efficiencies (Novikov-Thorne + Blandford-Znajek)
+            eta_rad = calculate_radiative_efficiency(galaxies[centralgal].BHSpin);
+            eta_jet = calculate_jet_efficiency(galaxies[centralgal].BHSpin);
+        } else {
+            // Original SAGE: fixed η = 0.1, no jet contribution
+            eta_rad = 0.1;
+            eta_jet = 0.0;
+        }
+
+        // Eddington rate: Mdot_Edd = L_Edd / (η * c²)
+        // Higher radiative efficiency means lower Eddington mass accretion rate
+        EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (eta_rad * 9e10);
 
         // accretion onto BH is always limited by the Eddington rate
         if(AGNrate > EDDrate) {
@@ -762,13 +775,16 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         }
 
         // coefficient to heat the cooling gas back to the virial temperature of the halo
-        // 1.34e5 = sqrt(2*eta*c^2), eta=0.1 (standard efficiency) and c in km/s
+        // For radio mode: combine disk radiation (η_rad) and jet power (η_jet)
+        // coeff_factor = sqrt(2 * η_total * c²) where c = 3e5 km/s
         // BUG FIX: Check Vvir > 0 to avoid division by zero
         if(galaxies[centralgal].Vvir <= 0.0) {
             AGNcoeff = 0.0;
             AGNheating = 0.0;
         } else {
-            AGNcoeff = (1.34e5 / galaxies[centralgal].Vvir) * (1.34e5 / galaxies[centralgal].Vvir);
+            double eta_total = eta_rad + eta_jet;
+            double coeff_factor = 3.0e5 * sqrt(2.0 * eta_total);  // c in km/s
+            AGNcoeff = (coeff_factor / galaxies[centralgal].Vvir) * (coeff_factor / galaxies[centralgal].Vvir);
 
             // cooling mass that can be suppresed from AGN heating
             AGNheating = AGNcoeff * AGNaccreted;
@@ -842,8 +858,21 @@ double do_AGN_heating_cgm(double coolingGas, const int centralgal, const double 
             }
         }
 
-        // Eddington rate
-        EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (0.1 * 9e10);
+        // AGN efficiencies: spin-dependent or original fixed value
+        double eta_rad, eta_jet;
+        if(run_params->BHSpinModelOn == 1) {
+            // Spin-dependent efficiencies (Novikov-Thorne + Blandford-Znajek)
+            eta_rad = calculate_radiative_efficiency(galaxies[centralgal].BHSpin);
+            eta_jet = calculate_jet_efficiency(galaxies[centralgal].BHSpin);
+        } else {
+            // Original SAGE: fixed η = 0.1, no jet contribution
+            eta_rad = 0.1;
+            eta_jet = 0.0;
+        }
+
+        // Eddington rate: Mdot_Edd = L_Edd / (η * c²)
+        // Higher radiative efficiency means lower Eddington mass accretion rate
+        EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (eta_rad * 9e10);
 
         // accretion onto BH is always limited by the Eddington rate
         if(AGNrate > EDDrate) {
@@ -859,13 +888,16 @@ double do_AGN_heating_cgm(double coolingGas, const int centralgal, const double 
         }
 
         // coefficient to heat the cooling gas back to the virial temperature of the halo
-        // 1.34e5 = sqrt(2*eta*c^2), eta=0.1 (standard efficiency) and c in km/s
+        // For radio mode: combine disk radiation (η_rad) and jet power (η_jet)
+        // coeff_factor = sqrt(2 * η_total * c²) where c = 3e5 km/s
         // BUG FIX: Check Vvir > 0 to avoid division by zero
         if(galaxies[centralgal].Vvir <= 0.0) {
             AGNcoeff = 0.0;
             AGNheating = 0.0;
         } else {
-            AGNcoeff = (1.34e5 / galaxies[centralgal].Vvir) * (1.34e5 / galaxies[centralgal].Vvir);
+            double eta_total = eta_rad + eta_jet;
+            double coeff_factor = 3.0e5 * sqrt(2.0 * eta_total);  // c in km/s
+            AGNcoeff = (coeff_factor / galaxies[centralgal].Vvir) * (coeff_factor / galaxies[centralgal].Vvir);
 
             // cooling mass that can be suppresed from AGN heating
             AGNheating = AGNcoeff * AGNaccreted;

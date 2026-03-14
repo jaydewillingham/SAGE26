@@ -255,7 +255,14 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, struc
 void quasar_mode_wind(const int gal, const double BHaccrete, struct GALAXY *galaxies, const struct params *run_params)
 {
     // work out total energy in quasar wind (eta*m*c^2)
-    const double quasar_energy = run_params->QuasarModeEfficiency * 0.1 * BHaccrete * (C / run_params->UnitVelocity_in_cm_per_s) * (C / run_params->UnitVelocity_in_cm_per_s);
+    // Use spin-dependent or original fixed efficiency
+    double eta_rad;
+    if(run_params->BHSpinModelOn == 1) {
+        eta_rad = calculate_radiative_efficiency(galaxies[gal].BHSpin);
+    } else {
+        eta_rad = 0.1;  // Original SAGE fixed value
+    }
+    const double quasar_energy = run_params->QuasarModeEfficiency * eta_rad * BHaccrete * (C / run_params->UnitVelocity_in_cm_per_s) * (C / run_params->UnitVelocity_in_cm_per_s);
     const double cold_gas_energy = 0.5 * galaxies[gal].ColdGas * galaxies[gal].Vvir * galaxies[gal].Vvir;
 
     // compare quasar wind and cold gas energies and eject cold
