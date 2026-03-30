@@ -50,7 +50,7 @@ def read_simulation_params(filepath):
 def main():
     parser = argparse.ArgumentParser(description='Black hole growth tracking validation and plots')
     parser.add_argument('-i', '--input-pattern', type=str,
-                        default='./output/millennium/model_*.hdf5',
+                        default='../output/millennium/model_*.hdf5',
                         help='Path pattern to model HDF5 files')
     parser.add_argument('-s', '--snapshot', type=int, default=None,
                         help='Snapshot number (default: latest)')
