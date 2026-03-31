@@ -167,6 +167,7 @@ struct GALAXY
     double Heating;
     float r_heat;
     float QuasarModeBHaccretionMass;
+    float RadioModeBHaccretionMass;  //jayde note
     float TimeOfLastMajorMerger;
     float TimeOfLastMinorMerger;
     float OutflowRate;

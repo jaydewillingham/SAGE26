@@ -695,7 +695,7 @@ double cooling_recipe_regime_aware(const int gal, const double dt, struct GALAXY
 }
 
 
-
+//jayde noted
 double do_AGN_heating(double coolingGas, const int centralgal, const double dt, const double x, const double rcool, struct GALAXY *galaxies, const struct params *run_params)
 {
     double AGNrate, EDDrate, AGNaccreted, AGNcoeff, AGNheating, metallicity;
@@ -772,6 +772,7 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         // accreted mass onto black hole
         metallicity = get_metallicity(galaxies[centralgal].HotGas, galaxies[centralgal].MetalsHotGas);
         galaxies[centralgal].BlackHoleMass += AGNaccreted;
+        galaxies[centralgal].RadioModeBHaccretionMass += AGNaccreted;  //jayde note
         galaxies[centralgal].HotGas -= AGNaccreted;
         galaxies[centralgal].MetalsHotGas -= metallicity * AGNaccreted;
 
