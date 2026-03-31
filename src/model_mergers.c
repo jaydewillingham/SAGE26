@@ -161,7 +161,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     // grow black hole through accretion from cold disk during mergers
     if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, galaxies, run_params);
+        grow_black_hole(merger_centralgal, mass_ratio, 0, galaxies, run_params);// jayde note
     }
 
     // Determine which bulge component will receive burst stars
@@ -221,7 +221,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
 
 
-void grow_black_hole(const int merger_centralgal, const double mass_ratio, struct GALAXY *galaxies, const struct params *run_params)
+void grow_black_hole(const int merger_centralgal, const double mass_ratio, const int from_instability, struct GALAXY *galaxies, const struct params *run_params)
 {
     double BHaccrete, metallicity;
 
@@ -244,6 +244,11 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, struc
         }
 
         galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
+        if(from_instability) {
+            galaxies[merger_centralgal].InstabilityDrivenBHaccretionMass += BHaccrete;
+        } else {
+            galaxies[merger_centralgal].MergerDrivenBHaccretionMass += BHaccrete;
+        } //note
 
         quasar_mode_wind(merger_centralgal, BHaccrete, galaxies, run_params);
     }
