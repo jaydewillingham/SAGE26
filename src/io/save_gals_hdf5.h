@@ -98,6 +98,7 @@ struct HDF5_GALAXY_OUTPUT
     float *RadioModeBHaccretionMass; //jayde note
     float *InstabilityDrivenBHaccretionMass; //jayde note
     float *MergerDrivenBHaccretionMass; //jayde note
+    float *BHMergerMass; //jayde note
     float *TimeOfLastMajorMerger;
     float *TimeOfLastMinorMerger;
     float *OutflowRate;

@@ -102,6 +102,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].RadioModeBHaccretionMass = 0.0;  //jayde note
     galaxies[p].MergerDrivenBHaccretionMass = 0.0; //jayde note
     galaxies[p].InstabilityDrivenBHaccretionMass = 0.0; //jayde note
+    galaxies[p].BHMergerMass = 0.0; // jayde note Track BH mass growth from mergers separately
     galaxies[p].TimeOfLastMajorMerger = -1.0;
     galaxies[p].TimeOfLastMinorMerger = -1.0;
     galaxies[p].OutflowRate = 0.0;

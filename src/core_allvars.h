@@ -170,6 +170,7 @@ struct GALAXY
     float RadioModeBHaccretionMass;  //jayde note
     float InstabilityDrivenBHaccretionMass; //jayde note
     float MergerDrivenBHaccretionMass; //jayde note
+    float BHMergerMass; // jayde note Track BH mass growth from mergers separately
     float TimeOfLastMajorMerger;
     float TimeOfLastMinorMerger;
     float OutflowRate;
