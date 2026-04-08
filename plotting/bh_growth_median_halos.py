@@ -21,6 +21,23 @@ plt.rcParams['axes.edgecolor'] = 'black'
 
 OutputFormat = '.pdf'
 
+# ============================================================
+# Optional: overlay digitised reference data from TXT file
+# ============================================================
+
+PLOT_DIGITISED_TXT = True   # <--- MASTER SWITCH (True / False)
+
+DIGITISED_TXT_FILENAME = "BH_mass_growth_refined_digitised.txt"
+
+# Colour scheme matching the paper
+DIGITISED_COLOURS = {
+    'Hot-mode': '#d65ad1',         # magenta
+    'Cold-mode': '#27dbe8',        # cyan
+    #'Secular': '#ff0000',          # red
+    'Merger-driver': '#ff9900',    # orange
+    'BHBH': '#2ca02c'              # green
+}
+
 
 def read_hdf(file_list, snap, field):
     """Read a field from multiple HDF5 files."""
@@ -53,6 +70,45 @@ def compute_percentiles(data, percentiles=[16, 50, 84]):
     if len(valid) == 0:
         return [np.nan] * len(percentiles)
     return np.percentile(valid, percentiles)
+
+def read_digitised_txt(filepath):
+    """
+    Reads digitised BH growth curves from the provided TXT file.
+
+    Returns:
+        data[panel][channel] = dict with keys:
+            'z'  -> array
+            'y'  -> array (log10 MBH)
+    """
+    data = {}
+    current_panel = None
+    z_vals = None
+
+    with open(filepath, 'r') as f:
+        for line in f:
+            line = line.strip()
+
+            if not line or line.startswith('#'):
+                continue
+
+            if line.startswith('z '):
+                z_vals = np.array([float(x) for x in line.split()[1:]])
+
+            elif line.startswith('[') and line.endswith(']'):
+                current_panel = line.strip('[]')
+                data[current_panel] = {}
+
+            else:
+                parts = line.split()
+                channel = parts[0]
+                values = np.array([float(x) for x in parts[1:]])
+
+                data[current_panel][channel] = {
+                    'z': z_vals,
+                    'y': values
+                }
+
+    return data
 
 
 def main():
@@ -277,6 +333,23 @@ def main():
                 'bm': pct(bm[mask]),
             })
 
+    # ------------------------------------------------------------
+    # Load digitised TXT data (if requested)
+    # ------------------------------------------------------------
+    digitised_data = None
+
+    if PLOT_DIGITISED_TXT:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        txt_path = os.path.join(script_dir, DIGITISED_TXT_FILENAME)
+
+        if os.path.exists(txt_path):
+            print(f"  Loading digitised reference curves from: {txt_path}")
+            digitised_data = read_digitised_txt(txt_path)
+        else:
+            print(f"  WARNING: Digitised TXT file not found: {txt_path}")
+            print("  Disabling digitised reference plotting.")
+            digitised_data = None
+
     # ================= PLOTTING =================
     fig, axes = plt.subplots(1, 4, figsize=(18, 5), sharey=True)
 
@@ -324,6 +397,32 @@ def main():
 
             ax.plot(snap_z[valid], log_p50, color=color, linewidth=1.5)
             ax.fill_between(snap_z[valid], log_p16, log_p84, color=color, alpha=0.25)
+
+            # ----------------------------------------------------
+        # Overlay digitised reference curves (optional)
+        # ----------------------------------------------------
+        if PLOT_DIGITISED_TXT and digitised_data is not None:
+
+            panel_key = [
+                'logMh0~12',
+                'logMh0~13',
+                'logMh0~14',
+                'logMh0~15'
+            ][i]
+
+            if panel_key in digitised_data:
+                for channel, entry in digitised_data[panel_key].items():
+                    if channel not in DIGITISED_COLOURS:
+                        continue
+
+                    ax.plot(
+                        entry['z'],
+                        entry['y'],
+                        color=DIGITISED_COLOURS[channel],
+                        linestyle='--',
+                        linewidth=2.0,
+                        alpha=0.9
+                    )
 
         ax.set_title(bin_labels[i])
         ax.set_xlim(snap_z.min(), 7.0)
