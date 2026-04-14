@@ -4,7 +4,7 @@
 #SBATCH --output=slurm-bhs-%A_%a.out
 #SBATCH --cpus-per-task=1
 #SBATCH --time=2:00:00
-#SBATCH --mem=60G
+#SBATCH --mem=70G
 
 #for a third size 50G and 0:30:00
 
@@ -19,4 +19,5 @@ ml matplotlib/3.7.0
 #python3 plotting/bh_mass_func_sep.py
 #python3 plotting/bh_growth_tracking_median.py -i /fred/oz004/jwillingham/millennium_full/model_*.hdf5
 #python3 plotting/bh_growth_median_halos.py -i /fred/oz004/jwillingham/millennium_full/model_*.hdf5
-python3 plotting/bh_growth_median_halos_MstarCut.py -i /fred/oz004/jwillingham/millennium_full_bhsage/model_*.hdf5
+#python3 plotting/bh_growth_median_halos_MstarCut.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu/model_*.hdf5
+python3 plotting/bh_growth_history_opt.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu/model_*.hdf5 #70G
