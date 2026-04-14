@@ -17,5 +17,6 @@ ml matplotlib/3.7.0
 #python plotting/bhmf_diva.py
 #python3 plotting/bh_mass_func_lit.py
 #python3 plotting/bh_mass_func_sep.py
-python3 plotting/bh_growth_tracking_median.py -i /fred/oz004/jwillingham/millennium_full/model_*.hdf5
+#python3 plotting/bh_growth_tracking_median.py -i /fred/oz004/jwillingham/millennium_full/model_*.hdf5
 #python3 plotting/bh_growth_median_halos.py -i /fred/oz004/jwillingham/millennium_full/model_*.hdf5
+python3 plotting/bh_growth_median_halos_MstarCut.py -i /fred/oz004/jwillingham/millennium_full_bhsage/model_*.hdf5

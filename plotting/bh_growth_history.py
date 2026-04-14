@@ -5,18 +5,12 @@ Black hole growth tracking: validates that the three accretion channels
 and plots the MEDIAN relative contributions across galaxies.
 
 MODIFIED VERSION:
-Instead of plotting median statistics (which average out individual galaxy effects),
-this version:
-1. Tracks the growth trajectory of EACH INDIVIDUAL GALAXY across all snapshots
-2. Plots all galaxy trajectories in light, semi-transparent colors
-3. Highlights the galaxy that is at the 50th percentile (median) at z=0 in darker colors
-This reveals the diversity of growth histories and shows which galaxy follows the "typical" path.
-
-python bh_growth_tracking_modified.py \
-    -i ./output/millennium/model_*.hdf5 \
-    -o ./plots \
-    -s <latest_snap> \
-    --validation-snap <snapshot>
+1. Tracks the growth trajectory of EACH INDIVIDUAL GALAXY across all snapshots.
+2. Plots all galaxy trajectories in light, semi-transparent colors.
+3. Generates TWO trajectory plots:
+   a) Independent tracking: Selects the specific range (e.g., middle 20%) for EACH channel at z=0.
+   b) Common Mass tracking: Selects the specific range based on TOTAL BH MASS at z=0, 
+      and tracks that exact same subset of galaxies across all channels.
 """
 import numpy as np
 import h5py
@@ -35,6 +29,19 @@ plt.rcParams['axes.edgecolor'] = 'black'
 
 OutputFormat = '.pdf'
 
+# ============================================================
+# USER OPTIONS
+# ============================================================
+# Choose which statistical range of galaxies to track back in time from z=0.
+# Valid options:
+#   "1-sigma"   -> Middle 68% (16th to 84th percentile)
+#   "iqr"       -> Middle 50% (25th to 75th percentile - Interquartile Range)
+#   "middle_20" -> Middle 20% (40th to 60th percentile)
+#   "middle_10" -> Middle 10% (45th to 55th percentile - Very tight to the median)
+
+TRACKING_RANGE = "middle_10"  # <--- SET YOUR CHOICE HERE
+
+# ============================================================
 
 def read_hdf(file_list, snap, field):
     """Read a field from multiple HDF5 files."""
@@ -59,14 +66,6 @@ def read_simulation_params(filepath):
         if 'Header/snapshot_redshifts' in f:
             params['snapshot_redshifts'] = np.array(f['Header/snapshot_redshifts'])
     return params
-
-
-def compute_percentiles(data, percentiles=[16, 50, 84]):
-    """Compute percentiles for non-zero values, return NaN if no valid data."""
-    valid = data[data > 0]
-    if len(valid) == 0:
-        return [np.nan] * len(percentiles)
-    return np.percentile(valid, percentiles)
 
 
 def main():
@@ -125,134 +124,45 @@ def main():
     RadioMode = read_hdf(file_list, snap_num, 'RadioModeBHaccretionMass') * 1.0e10 / Hubble_h
     BHMerger = read_hdf(file_list, snap_num, 'BHMergerMass') * 1.0e10 / Hubble_h
     BHSeedMass = read_hdf(file_list, snap_num, 'BHSeedMass') * 1.0e10 / Hubble_h
-    StellarMass = read_hdf(file_list, snap_num, 'StellarMass') * 1.0e10 / Hubble_h
-    BulgeMass = read_hdf(file_list, snap_num, 'BulgeMass') * 1.0e10 / Hubble_h
-    Mvir = read_hdf(file_list, snap_num, 'Mvir') * 1.0e10 / Hubble_h
-    Type = read_hdf(file_list, snap_num, 'Type')
 
     if len(BlackHoleMass) == 0:
         print("No galaxies found!")
         sys.exit(1)
 
-    # Handle missing fields from older output files (default to zeros)
-    ngal = len(BlackHoleMass)
-    if len(TorqueDriven) == 0:
-        TorqueDriven = np.zeros(ngal)
-    if len(SeedModeAccretion) == 0:
-        SeedModeAccretion = np.zeros(ngal)
-    if len(BHSeedMass) == 0:
-        BHSeedMass = np.zeros(ngal)
-
-    print(f"Total galaxies: {len(BlackHoleMass)}")
-
     bh_mask = BlackHoleMass > 0
     n_bh = np.sum(bh_mask)
-    print(f"Galaxies with BH: {n_bh} ({100*n_bh/len(BlackHoleMass):.1f}%)")
-
-    # ===================== VALIDATION =====================
-    print("\n" + "="*60)
-    print("VALIDATION: Channel sum vs BlackHoleMass")
-    print("="*60)
-
-    # Growth budget: QuasarMode + RadioMode + BHSeedMass = BlackHoleMass
-    growth_sum = QuasarMode + RadioMode + BHSeedMass
-    residual = BlackHoleMass - growth_sum
-
-    # Only check galaxies with BHs
-    if n_bh > 0:
-        bh = BlackHoleMass[bh_mask]
-        gs = growth_sum[bh_mask]
-        res = residual[bh_mask]
-        frac_res = res / bh
-
-        print(f"\nBlackHoleMass total:  {bh.sum():.6e} M_sun")
-        print(f"Growth sum total:     {gs.sum():.6e} M_sun  (QuasarMode + RadioMode + BHSeedMass)")
-        print(f"  Quasar mode total:  {QuasarMode[bh_mask].sum():.6e} M_sun  ({100*QuasarMode[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"    Merger-driven:    {MergerDriven[bh_mask].sum():.6e} M_sun  ({100*MergerDriven[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"    Instability:      {InstabilityDriven[bh_mask].sum():.6e} M_sun  ({100*InstabilityDriven[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"    Torque-driven:    {TorqueDriven[bh_mask].sum():.6e} M_sun  ({100*TorqueDriven[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"    Seed-mode:        {SeedModeAccretion[bh_mask].sum():.6e} M_sun  ({100*SeedModeAccretion[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"  Radio mode:         {RadioMode[bh_mask].sum():.6e} M_sun  ({100*RadioMode[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"  BH seed mass:       {BHSeedMass[bh_mask].sum():.6e} M_sun  ({100*BHSeedMass[bh_mask].sum()/bh.sum():.1f}%)")
-        print(f"\n  BH-BH mergers:      {BHMerger[bh_mask].sum():.6e} M_sun  (diagnostic — mass received via coalescence)")
-        print(f"\nResidual (BH - growth sum):  {res.sum():.6e} M_sun")
-        print(f"\nPer-galaxy fractional residual (BH - growth sum) / BH:")
-        print(f"  Median: {np.median(frac_res):.6f}")
-        print(f"  Max:    {np.max(np.abs(frac_res)):.6f}")
-        print(f"  99th percentile: {np.percentile(np.abs(frac_res), 99):.6f}")
-
-        # Flag any large discrepancies
-        bad = np.abs(frac_res) > 0.01
-        if np.sum(bad) > 0:
-            print(f"\n  PASS/FAIL: WARNING — {np.sum(bad)} galaxies have >1% residual")
-        else:
-            print(f"\n  PASS: All galaxies have <1% residual")
-
-    # ===================== STATISTICS =====================
-    print("\n" + "="*60)
-    print("CHANNEL STATISTICS (galaxies with BH > 0)")
-    print("="*60)
-
-    if n_bh > 0:
-        md = MergerDriven[bh_mask]
-        id_ = InstabilityDriven[bh_mask]
-        td = TorqueDriven[bh_mask]
-        sm = SeedModeAccretion[bh_mask]
-        rm = RadioMode[bh_mask]
-        bm = BHMerger[bh_mask]
-        sd = BHSeedMass[bh_mask]
-
-        has_md = md > 0
-        has_id = id_ > 0
-        has_td = td > 0
-        has_sm = sm > 0
-        has_rm = rm > 0
-        has_bm = bm > 0
-        has_sd = sd > 0
-
-        print(f"\nGalaxies with merger-driven accretion:      {np.sum(has_md)} ({100*np.sum(has_md)/n_bh:.1f}%)")
-        print(f"Galaxies with instability-driven accretion: {np.sum(has_id)} ({100*np.sum(has_id)/n_bh:.1f}%)")
-        print(f"Galaxies with torque-driven accretion:      {np.sum(has_td)} ({100*np.sum(has_td)/n_bh:.1f}%)")
-        print(f"Galaxies with seed-mode accretion:          {np.sum(has_sm)} ({100*np.sum(has_sm)/n_bh:.1f}%)")
-        print(f"Galaxies with radio mode accretion:         {np.sum(has_rm)} ({100*np.sum(has_rm)/n_bh:.1f}%)")
-        print(f"Galaxies with BH-BH mergers:                {np.sum(has_bm)} ({100*np.sum(has_bm)/n_bh:.1f}%)")
-        print(f"Galaxies with BH seed mass:                 {np.sum(has_sd)} ({100*np.sum(has_sd)/n_bh:.1f}%)")
-
-        # Dominant growth channel per galaxy (excluding BH mergers and seed mass as they're not growth channels)
-        dominant = np.argmax(np.column_stack([md, id_, td, sm, rm]), axis=1)
-        labels = ['Merger-driven', 'Instability-driven', 'Torque-driven', 'Seed-mode', 'Radio mode']
-        for i, lab in enumerate(labels):
-            n = np.sum(dominant == i)
-            print(f"  Dominant growth channel = {lab}: {n} ({100*n/n_bh:.1f}%)")
 
     # ===================== PLOTS =====================
     print(f"\nGenerating plots in {OutputDir}...")
 
     # -- Plot individual galaxy trajectories --
     if 'snapshot_redshifts' in sim_params:
-        print("  Computing individual galaxy growth trajectories across all snapshots...")
+        print("  Computing statistical group growth trajectories across all snapshots...")
 
         all_snaps = np.array(sim_params['available_snapshots'])
         all_redshifts = sim_params['snapshot_redshifts']
 
-        # --- Cosmology ---
-        with h5py.File(file_list[0], 'r') as f:
-            omega_m = float(f['Header/Simulation'].attrs['omega_matter'])
-            omega_l = float(f['Header/Simulation'].attrs['omega_lambda'])
+        # Setup the percentile ranges based on user selection
+        range_options = {
+            "1-sigma": ([16, 50, 84], "1-sigma (16%-84%)"),
+            "iqr": ([25, 50, 75], "IQR (25%-75%)"),
+            "middle_20": ([40, 50, 60], "Middle 20% (40%-60%)"),
+            "middle_10": ([45, 50, 55], "Middle 10% (45%-55%)")
+        }
 
-        def redshift_to_age_gyr(z, H0=Hubble_h*100, Om=omega_m, Ol=omega_l):
-            from scipy.integrate import quad
-            H0_per_gyr = H0 * 1.0222e-3
-            integrand = lambda a: 1.0 / (a * np.sqrt(Om / a**3 + Ol))
-            age, _ = quad(integrand, 0, 1.0 / (1.0 + z))
-            return age / H0_per_gyr
+        if TRACKING_RANGE not in range_options:
+            chosen_range = "middle_20"
+        else:
+            chosen_range = TRACKING_RANGE
 
-# ========== NEW APPROACH ==========
+        pct_vals, range_name = range_options[chosen_range]
+        print(f"  Using Tracking Range: {range_name}")
+
         # Step 1: Identify the z=0 snapshot (lowest redshift)
         z0_snap = all_snaps[np.argmin(all_redshifts[all_snaps])]
         print(f"  z=0 reference snapshot: {z0_snap} (z = {all_redshifts[z0_snap]:.6f})")
 
-        # Step 2: Read z=0 data and find the median galaxy for each channel
+        # Step 2: Read z=0 data
         bh_z0 = read_hdf(file_list, z0_snap, 'BlackHoleMass') * 1.0e10 / Hubble_h
 
         def safe_read_z0(field):
@@ -266,7 +176,6 @@ def main():
         rm_z0 = safe_read_z0('RadioModeBHaccretionMass')
         bm_z0 = safe_read_z0('BHMergerMass')
 
-        # FIX: We pass the FULL z0 array here (not the masked one)
         channels_info = [
             ('Merger-driven', 'md', '#2196F3', 'o', md_z0),
             ('Instability-driven', 'id', '#FF9800', 'D', id_z0),
@@ -274,35 +183,45 @@ def main():
             ('BH-BH mergers', 'bm', '#4CAF50', '^', bm_z0),
         ]
 
-        # For each channel, find the galaxy index that has the median z=0 value
-        median_gal_indices = {}
+        # ---------------------------------------------------------
+        # FIND INDEPENDENT GROUPS (per channel)
+        # ---------------------------------------------------------
+        print(f"\n  Finding INDEPENDENT samples for each channel based on their specific growth at z=0...")
+        independent_groups = {}
         for label, key, color, marker, full_z0_data in channels_info:
-            # Mask to find valid galaxies
             valid_mask = (bh_z0 > 0) & (full_z0_data > 0)
             if np.any(valid_mask):
-                median_value_z0 = np.median(full_z0_data[valid_mask])
-                
-                # Find index in the FULL array. 
-                # Set invalid galaxies to infinity so they are never chosen.
-                diffs = np.abs(full_z0_data - median_value_z0)
-                diffs[~valid_mask] = np.inf
-                idx = np.argmin(diffs)
-                
-                median_gal_indices[key] = idx
-                print(f"    {label}: median galaxy absolute index = {idx}, z=0 value = {full_z0_data[idx]:.4e}")
+                valid_data = full_z0_data[valid_mask]
+                p_lower, p50, p_upper = np.percentile(valid_data, pct_vals)
+                in_band = (full_z0_data >= p_lower) & (full_z0_data <= p_upper) & valid_mask
+                sample_indices = np.where(in_band)[0]
+                independent_groups[key] = sample_indices
+                print(f"    {label}: [{p_lower:.2e} - {p_upper:.2e}], tracking {len(sample_indices)} galaxies.")
+
+        # ---------------------------------------------------------
+        # FIND COMMON GROUP (based entirely on Total BH Mass)
+        # ---------------------------------------------------------
+        print(f"\n  Finding COMMON sample based on TOTAL Black Hole Mass at z=0...")
+        valid_bh_mask = bh_z0 > 0
+        if np.any(valid_bh_mask):
+            valid_bh_data = bh_z0[valid_bh_mask]
+            p_lower_bh, p50_bh, p_upper_bh = np.percentile(valid_bh_data, pct_vals)
+            in_band_bh = (bh_z0 >= p_lower_bh) & (bh_z0 <= p_upper_bh) & valid_bh_mask
+            common_sample_indices = np.where(in_band_bh)[0]
+            print(f"    Total BH Mass: [{p_lower_bh:.2e} - {p_upper_bh:.2e}], tracking {len(common_sample_indices)} galaxies across all channels.")
+        else:
+            common_sample_indices = []
 
         # Step 3: Build trajectories for ALL galaxies across ALL snapshots
         galaxy_trajectories = {key: {} for _, key, _, _, _ in channels_info}
 
-        print("  Reading data for all snapshots...")
+        print("\n  Reading data for all snapshots to build trajectories...")
         for sn in all_snaps:
             bh = read_hdf(file_list, sn, 'BlackHoleMass') * 1.0e10 / Hubble_h
-            if len(bh) == 0:
-                continue
+            if len(bh) == 0: continue
 
             z = all_redshifts[sn] if sn < len(all_redshifts) else None
-            if z is None:
-                continue
+            if z is None: continue
 
             def safe_read(field):
                 arr = read_hdf(file_list, sn, field) * 1.0e10 / Hubble_h
@@ -317,60 +236,55 @@ def main():
                 'bm': safe_read('BHMergerMass'),
             }
 
-            # For each galaxy, record its growth value at this snapshot
             for gal_idx in range(len(bh)):
                 for key in galaxy_trajectories:
                     if gal_idx not in galaxy_trajectories[key]:
                         galaxy_trajectories[key][gal_idx] = {'z': [], 'growth': []}
-                    
                     growth_val = channel_data[key][gal_idx]
                     galaxy_trajectories[key][gal_idx]['z'].append(z)
                     galaxy_trajectories[key][gal_idx]['growth'].append(growth_val)
 
-        # Step 4: Create the plot
-        print("  Creating individual trajectory plot...")
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        axes = axes.flatten()
+        # =========================================================
+        # PLOT 1: INDEPENDENT TRACKING
+        # =========================================================
+        print("  Creating INDEPENDENT trajectories plot...")
+        fig1, axes1 = plt.subplots(2, 2, figsize=(14, 10))
+        axes1 = axes1.flatten()
 
         for ax_idx, (label, key, color, marker, _) in enumerate(channels_info):
-            ax = axes[ax_idx]
+            ax = axes1[ax_idx]
 
-            # ============================================
-            # PLOT ALL GALAXIES IN LIGHT, SEMI-TRANSPARENT
-            # ============================================
+            # Background fuzz (all galaxies)
             for gal_idx in galaxy_trajectories[key]:
                 z_vals = np.array(galaxy_trajectories[key][gal_idx]['z'])
                 growth_vals = np.array(galaxy_trajectories[key][gal_idx]['growth'])
-
-                # Only plot if there's data > 0 (can't log of zero or negative)
                 valid = growth_vals > 0
                 if np.any(valid):
                     log_growth = np.log10(growth_vals[valid])
                     z_valid = z_vals[valid]
-
-                    # Sort by redshift so line plots correctly
                     sort_idx = np.argsort(z_valid)
-                    ax.plot(z_valid[sort_idx], log_growth[sort_idx],
-                            color=color, alpha=0.05, linewidth=0.8)
+                    ax.plot(z_valid[sort_idx], log_growth[sort_idx], color=color, alpha=0.05, linewidth=0.8)
 
-            # ============================================
-            # HIGHLIGHT THE z=0 MEDIAN GALAXY IN BOLD
-            # ============================================
-            if key in median_gal_indices:
-                med_idx = median_gal_indices[key]
-                if med_idx in galaxy_trajectories[key]:
-                    z_vals = np.array(galaxy_trajectories[key][med_idx]['z'])
-                    growth_vals = np.array(galaxy_trajectories[key][med_idx]['growth'])
-
-                    valid = growth_vals > 0
-                    if np.any(valid):
-                        log_growth = np.log10(growth_vals[valid])
-                        z_valid = z_vals[valid]
-
-                        sort_idx = np.argsort(z_valid)
-                        ax.plot(z_valid[sort_idx], log_growth[sort_idx],
-                                color=color, linewidth=2.5, marker=marker,
-                                markersize=6, label='z=0 Median Galaxy', zorder=100)
+            # Bold line (Independent Group Median)
+            if key in independent_groups and len(independent_groups[key]) > 0:
+                sample_indices = independent_groups[key]
+                z_to_growths = {}
+                for idx in sample_indices:
+                    if idx in galaxy_trajectories[key]:
+                        for z_val, g_val in zip(galaxy_trajectories[key][idx]['z'], galaxy_trajectories[key][idx]['growth']):
+                            if g_val > 0:
+                                if z_val not in z_to_growths: z_to_growths[z_val] = []
+                                z_to_growths[z_val].append(g_val)
+                
+                med_z, med_growth = [], []
+                for z_val in sorted(z_to_growths.keys()):
+                    if len(z_to_growths[z_val]) > 0:
+                        med_z.append(z_val)
+                        med_growth.append(np.median(z_to_growths[z_val]))
+                
+                if len(med_z) > 0:
+                    ax.plot(np.array(med_z), np.log10(np.array(med_growth)), color=color, linewidth=2.5, marker=marker,
+                            markersize=6, label=f'{range_name} Median (N={len(sample_indices)})', zorder=100)
 
             ax.set_xlabel('Redshift', fontsize=11)
             ax.set_ylabel(r'$\log_{10}(\mathrm{Growth\ Mass}\ [M_\odot])$', fontsize=11)
@@ -379,17 +293,70 @@ def main():
             ax.legend(fontsize=10, loc='best')
             ax.grid(True, alpha=0.3)
 
-        plt.suptitle('Individual Galaxy BH Growth Trajectories\n(Light: All Galaxies | Bold: z=0 Median Galaxy)', 
-                     fontsize=14, y=1.00)
+        plt.suptitle(f'BH Growth Trajectories (INDEPENDENT TRACKING)\n(Light: All Galaxies | Bold: Median of specific {range_name} for EACH channel at z=0)', fontsize=14, y=1.00)
         plt.tight_layout()
-        plt.savefig(os.path.join(OutputDir, f'bh_growth_individual_trajectories{OutputFormat}'), dpi=150, bbox_inches='tight')
+        plt.savefig(os.path.join(OutputDir, f'bh_growth_individual_trajectories_independent{OutputFormat}'), dpi=150, bbox_inches='tight')
         plt.close()
+        print(f"  Saved: bh_growth_individual_trajectories_independent{OutputFormat}")
 
-        print(f"  Saved: bh_growth_individual_trajectories{OutputFormat}")
+        # =========================================================
+        # PLOT 2: COMMON MASS TRACKING
+        # =========================================================
+        print("  Creating COMMON MASS trajectories plot...")
+        fig2, axes2 = plt.subplots(2, 2, figsize=(14, 10))
+        axes2 = axes2.flatten()
+
+        for ax_idx, (label, key, color, marker, _) in enumerate(channels_info):
+            ax = axes2[ax_idx]
+
+            # Background fuzz (all galaxies)
+            for gal_idx in galaxy_trajectories[key]:
+                z_vals = np.array(galaxy_trajectories[key][gal_idx]['z'])
+                growth_vals = np.array(galaxy_trajectories[key][gal_idx]['growth'])
+                valid = growth_vals > 0
+                if np.any(valid):
+                    log_growth = np.log10(growth_vals[valid])
+                    z_valid = z_vals[valid]
+                    sort_idx = np.argsort(z_valid)
+                    ax.plot(z_valid[sort_idx], log_growth[sort_idx], color=color, alpha=0.05, linewidth=0.8)
+
+            # Bold line (Common Sample Median)
+            if len(common_sample_indices) > 0:
+                z_to_growths = {}
+                # Track the exact same COMMON sample of galaxies
+                for idx in common_sample_indices:
+                    if idx in galaxy_trajectories[key]:
+                        for z_val, g_val in zip(galaxy_trajectories[key][idx]['z'], galaxy_trajectories[key][idx]['growth']):
+                            if g_val > 0:  # Only track non-zero growths for log scale
+                                if z_val not in z_to_growths: z_to_growths[z_val] = []
+                                z_to_growths[z_val].append(g_val)
+                
+                med_z, med_growth = [], []
+                for z_val in sorted(z_to_growths.keys()):
+                    if len(z_to_growths[z_val]) > 0:
+                        med_z.append(z_val)
+                        med_growth.append(np.median(z_to_growths[z_val]))
+                
+                if len(med_z) > 0:
+                    ax.plot(np.array(med_z), np.log10(np.array(med_growth)), color=color, linewidth=2.5, marker=marker,
+                            markersize=6, label=f'Common {range_name} Median (Total BH Mass)', zorder=100)
+
+            ax.set_xlabel('Redshift', fontsize=11)
+            ax.set_ylabel(r'$\log_{10}(\mathrm{Growth\ Mass}\ [M_\odot])$', fontsize=11)
+            ax.set_xlim(-0.2, 7.0)
+            ax.set_title(label, fontsize=12)
+            ax.legend(fontsize=10, loc='best')
+            ax.grid(True, alpha=0.3)
+
+        plt.suptitle(f'BH Growth Trajectories (COMMON MASS TRACKING)\n(Light: All Galaxies | Bold: Median of galaxies with the {range_name} Total BH Mass at z=0)', fontsize=14, y=1.00)
+        plt.tight_layout()
+        plt.savefig(os.path.join(OutputDir, f'bh_growth_individual_trajectories_common_mass{OutputFormat}'), dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"  Saved: bh_growth_individual_trajectories_common_mass{OutputFormat}")
+
 
         # ================= HISTOGRAMS =================
         print(f"\n  Creating validation histograms for snapshot {validation_snap}...")
-
         bh_val = read_hdf(file_list, validation_snap, 'BlackHoleMass') * 1.0e10 / Hubble_h
         mask_val = bh_val > 0
 
@@ -406,7 +373,6 @@ def main():
 
         fig, axes = plt.subplots(2, 4, figsize=(16, 8))
         axes = axes.flatten()
-
         val_z = all_redshifts[validation_snap] if validation_snap < len(all_redshifts) else None
 
         hist_data = [
@@ -422,7 +388,6 @@ def main():
         for i, (label, data, color) in enumerate(hist_data):
             ax = axes[i]
             d = data[data > 0]
-
             if len(d):
                 ax.hist(np.log10(d), bins=30, color=color, alpha=0.7, edgecolor='black')
                 ax.set_title(label, fontsize=11)
@@ -441,11 +406,9 @@ def main():
         plt.tight_layout()
         plt.savefig(os.path.join(OutputDir, f'validation_histograms_snap{validation_snap}{OutputFormat}'), dpi=150, bbox_inches='tight')
         plt.close()
-
         print(f"  Saved: validation_histograms_snap{validation_snap}{OutputFormat}")
 
     print("\nDone.")
-
 
 if __name__ == '__main__':
     main()

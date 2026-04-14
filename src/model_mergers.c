@@ -333,10 +333,10 @@ void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, co
     galaxies[t].BHMergerMass += galaxies[p].BlackHoleMass; // jayde note Track BH mass growth from mergers separately
 
     // sum BH growth tracking
-    galaxies[t].QuasarModeBHaccretionMass += galaxies[p].QuasarModeBHaccretionMass;
-    galaxies[t].RadioModeBHaccretionMass += galaxies[p].RadioModeBHaccretionMass; // jayde note
-    galaxies[t].InstabilityDrivenBHaccretionMass += galaxies[p].InstabilityDrivenBHaccretionMass; // jayde note
-    galaxies[t].MergerDrivenBHaccretionMass += galaxies[p].MergerDrivenBHaccretionMass; // jayde note   
+    //galaxies[t].QuasarModeBHaccretionMass += galaxies[p].QuasarModeBHaccretionMass;
+    //galaxies[t].RadioModeBHaccretionMass += galaxies[p].RadioModeBHaccretionMass; // jayde note
+    //galaxies[t].InstabilityDrivenBHaccretionMass += galaxies[p].InstabilityDrivenBHaccretionMass; // jayde note
+    //galaxies[t].MergerDrivenBHaccretionMass += galaxies[p].MergerDrivenBHaccretionMass; // jayde note   
     galaxies[t].BHMergerMass += galaxies[p].BHMergerMass; // jayde note Track BH mass growth from mergers separately
 
     galaxies[t].CGMgas += galaxies[p].CGMgas;
