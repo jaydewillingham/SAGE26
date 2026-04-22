@@ -337,7 +337,7 @@ void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, co
     //galaxies[t].RadioModeBHaccretionMass += galaxies[p].RadioModeBHaccretionMass; // jayde note
     //galaxies[t].InstabilityDrivenBHaccretionMass += galaxies[p].InstabilityDrivenBHaccretionMass; // jayde note
     //galaxies[t].MergerDrivenBHaccretionMass += galaxies[p].MergerDrivenBHaccretionMass; // jayde note   
-    galaxies[t].BHMergerMass += galaxies[p].BHMergerMass; // jayde note Track BH mass growth from mergers separately
+    //galaxies[t].BHMergerMass += galaxies[p].BHMergerMass; // jayde note THIS COUNTS TWICE
 
     galaxies[t].CGMgas += galaxies[p].CGMgas;
     galaxies[t].MetalsCGMgas += galaxies[p].MetalsCGMgas;
