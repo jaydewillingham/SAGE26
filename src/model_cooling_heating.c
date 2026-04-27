@@ -772,7 +772,7 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         // accreted mass onto black hole
         metallicity = get_metallicity(galaxies[centralgal].HotGas, galaxies[centralgal].MetalsHotGas);
         galaxies[centralgal].BlackHoleMass += AGNaccreted;
-        galaxies[centralgal].RadioModeBHaccretionMass += AGNaccreted;  //jayde note
+        galaxies[centralgal].RadioModeBHaccretionMass[galaxies[centralgal].SnapNum] += AGNaccreted;  //jayde note
         galaxies[centralgal].HotGas -= AGNaccreted;
         galaxies[centralgal].MetalsHotGas -= metallicity * AGNaccreted;
 
@@ -869,7 +869,7 @@ double do_AGN_heating_cgm(double coolingGas, const int centralgal, const double 
         // accreted mass onto black hole
         metallicity = get_metallicity(galaxies[centralgal].CGMgas, galaxies[centralgal].MetalsCGMgas);
         galaxies[centralgal].BlackHoleMass += AGNaccreted;
-        galaxies[centralgal].RadioModeBHaccretionMass += AGNaccreted;  //jayde note
+        galaxies[centralgal].RadioModeBHaccretionMass[galaxies[centralgal].SnapNum] += AGNaccreted;  //jayde note
         galaxies[centralgal].CGMgas -= AGNaccreted;
         galaxies[centralgal].MetalsCGMgas -= metallicity * AGNaccreted;
 

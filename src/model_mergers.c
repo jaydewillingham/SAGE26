@@ -224,6 +224,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 void grow_black_hole(const int merger_centralgal, const double mass_ratio, const int from_instability, struct GALAXY *galaxies, const struct params *run_params)
 {
     double BHaccrete, metallicity;
+    const int snap = galaxies[merger_centralgal].SnapNum;
 
     if(galaxies[merger_centralgal].ColdGas > 0.0) {
         BHaccrete = run_params->BlackHoleGrowthRate * mass_ratio /
@@ -245,15 +246,14 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
 
         galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
         if(from_instability) {
-            galaxies[merger_centralgal].InstabilityDrivenBHaccretionMass += BHaccrete;
+            galaxies[merger_centralgal].InstabilityDrivenBHaccretionMass[snap] += BHaccrete;
         } else {
-            galaxies[merger_centralgal].MergerDrivenBHaccretionMass += BHaccrete;
+            galaxies[merger_centralgal].MergerDrivenBHaccretionMass[snap] += BHaccrete;
         } //note
 
         quasar_mode_wind(merger_centralgal, BHaccrete, galaxies, run_params);
     }
 }
-
 
 
 void quasar_mode_wind(const int gal, const double BHaccrete, struct GALAXY *galaxies, const struct params *run_params)
@@ -330,14 +330,14 @@ void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, co
     galaxies[t].MetalsICS += galaxies[p].MetalsICS;
 
     galaxies[t].BlackHoleMass += galaxies[p].BlackHoleMass;
-    galaxies[t].BHMergerMass += galaxies[p].BlackHoleMass; // jayde note Track BH mass growth from mergers separately
+    galaxies[t].BHMergerMass[galaxies[t].SnapNum] += galaxies[p].BlackHoleMass; // jayde note Track BH mass growth from mergers separately
 
     // sum BH growth tracking
-    //galaxies[t].QuasarModeBHaccretionMass += galaxies[p].QuasarModeBHaccretionMass;
-    //galaxies[t].RadioModeBHaccretionMass += galaxies[p].RadioModeBHaccretionMass; // jayde note
-    //galaxies[t].InstabilityDrivenBHaccretionMass += galaxies[p].InstabilityDrivenBHaccretionMass; // jayde note
-    //galaxies[t].MergerDrivenBHaccretionMass += galaxies[p].MergerDrivenBHaccretionMass; // jayde note   
-    //galaxies[t].BHMergerMass += galaxies[p].BHMergerMass; // jayde note THIS COUNTS TWICE
+    //galaxies[t].QuasarModeBHaccretionMass[snap] += galaxies[p].QuasarModeBHaccretionMass[snap];
+    //galaxies[t].RadioModeBHaccretionMass[snap] += galaxies[p].RadioModeBHaccretionMass[snap]; // jayde note
+    //galaxies[t].InstabilityDrivenBHaccretionMass[snap] += galaxies[p].InstabilityDrivenBHaccretionMass[snap]; // jayde note
+    //galaxies[t].MergerDrivenBHaccretionMass[snap] += galaxies[p].MergerDrivenBHaccretionMass[snap]; // jayde note   
+    //galaxies[t].BHMergerMass[snap] += galaxies[p].BHMergerMass[snap]; // jayde note THIS COUNTS TWICE
 
     galaxies[t].CGMgas += galaxies[p].CGMgas;
     galaxies[t].MetalsCGMgas += galaxies[p].MetalsCGMgas;
@@ -396,8 +396,6 @@ void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, co
         }
     }
 }
-
-
 
 void make_bulge_from_burst(const int p, struct GALAXY *galaxies)
 {

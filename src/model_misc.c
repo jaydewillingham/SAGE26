@@ -99,10 +99,12 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].Heating = 0.0;
     galaxies[p].r_heat = 0.0;
     galaxies[p].QuasarModeBHaccretionMass = 0.0;
-    galaxies[p].RadioModeBHaccretionMass = 0.0;  //jayde note
-    galaxies[p].MergerDrivenBHaccretionMass = 0.0; //jayde note
-    galaxies[p].InstabilityDrivenBHaccretionMass = 0.0; //jayde note
-    galaxies[p].BHMergerMass = 0.0; // jayde note Track BH mass growth from mergers separately
+    for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
+        galaxies[p].RadioModeBHaccretionMass[snap] = 0.0;
+        galaxies[p].MergerDrivenBHaccretionMass[snap] = 0.0;
+        galaxies[p].InstabilityDrivenBHaccretionMass[snap] = 0.0;
+        galaxies[p].BHMergerMass[snap] = 0.0;
+    }
     galaxies[p].TimeOfLastMajorMerger = -1.0;
     galaxies[p].TimeOfLastMinorMerger = -1.0;
     galaxies[p].OutflowRate = 0.0;

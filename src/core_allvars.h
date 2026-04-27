@@ -154,7 +154,7 @@ struct GALAXY
     float SfrBulgeColdGasMetals[STEPS];
 
     /* full star formation history - tracks stellar mass formed at each snapshot */
-    float SFHMassDisk[ABSOLUTEMAXSNAPS];   /* stellar mass formed in disk at each snapshot */
+    float SFHMassDisk[ABSOLUTEMAXSNAPS];   /* stellar mass formed in disk at each snapshot JAYDE */
     float SFHMassBulge[ABSOLUTEMAXSNAPS];  /* stellar mass formed in bulge (starbursts) at each snapshot */
     float ICS_disrupt;                     /* cumulative stellar mass disrupted to ICS (assembly tracking) */
     float ICS_accrete;                     /* cumulative ICS accreted from satellites (assembly tracking) */
@@ -167,10 +167,11 @@ struct GALAXY
     double Heating;
     float r_heat;
     float QuasarModeBHaccretionMass;
-    float RadioModeBHaccretionMass;  //jayde note
-    float InstabilityDrivenBHaccretionMass; //jayde note
-    float MergerDrivenBHaccretionMass; //jayde note
-    float BHMergerMass; // jayde note Track BH mass growth from mergers separately
+    float RadioModeBHaccretionMass[ABSOLUTEMAXSNAPS];  //jayde note
+    float InstabilityDrivenBHaccretionMass[ABSOLUTEMAXSNAPS]; //jayde note
+    float MergerDrivenBHaccretionMass[ABSOLUTEMAXSNAPS]; //jayde note
+    float BHMergerMass[ABSOLUTEMAXSNAPS]; // jayde note Track BH mass growth from mergers separately
+
     float TimeOfLastMajorMerger;
     float TimeOfLastMinorMerger;
     float OutflowRate;
