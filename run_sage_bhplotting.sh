@@ -21,4 +21,6 @@ ml matplotlib/3.7.0
 #python3 plotting/bh_growth_median_halos.py -i /fred/oz004/jwillingham/millennium_full/model_*.hdf5
 #python3 plotting/bh_growth_median_halos_MstarCut.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu/model_*.hdf5
 #python3 plotting/bh_growth_history_opt.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu/model_*.hdf5 #70G
-python3 plotting/bh_growth_median_halos_ID.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu_new/model_*.hdf5 #70G
+#python3 plotting/bh_growth_median_halos_ID.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu_new/model_*.hdf5 #neede 2+ hours
+#python3 plotting/bh_growth_median_halos_ID_faster.py -i /fred/oz004/jwillingham/millennium_full_bhsage_insitu_new/model_*.hdf5
+python3 plotting/Masschecker.py --model1-pattern /fred/oz004/jwillingham/millennium_full_bhsage/model_*.hdf5 --model2-pattern /fred/oz004/jwillingham/millennium_full_bhsage_insitu_new/model_*.hdf5 --output-txt /fred/oz004/jwillingham/millennium_full_bhsage_insitu_new/bh_mass_errors.txt

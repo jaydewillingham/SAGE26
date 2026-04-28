@@ -108,10 +108,11 @@ def read_hdf_optimized(file_list, snap, field, ref_field='BlackHoleMass', max_sn
             
             # CASE 1: Clean 2D array (Ngal, MAXSNAPS)
             if val.ndim == 2:
-                # OPT: Only sum up to current snapshot, avoid full slice
-                val = np.nansum(val[:, :int(snap)+1], axis=1)
+                # Save shape BEFORE summing (after summing, it becomes 1D)
                 if detected_max_snaps is None:
                     detected_max_snaps = val.shape[1]
+                # OPT: Only sum up to current snapshot, avoid full slice
+                val = np.nansum(val[:, :int(snap)+1], axis=1)
                 
             # CASE 2: Flattened 1D array (Ngal * MAXSNAPS)
             elif val.ndim == 1 and len(val) > ref_len and ref_len > 0:
@@ -200,11 +201,29 @@ def read_digitised_txt(filepath):
     return data
 
 def pct(x, threshold=1e-6):
-    """OPT: Inline percentile function with early exit."""
+    """OPT: Inline percentile function with guaranteed 3-element array return."""
+    if len(x) == 0:
+        return np.array([np.nan, np.nan, np.nan], dtype=float)
+    
     valid_vals = x[x > threshold]
-    if len(valid_vals) > 2:
-        return np.percentile(valid_vals, [16, 50, 84])
-    return np.array([np.nan, np.nan, np.nan])
+    
+    if len(valid_vals) < 3:
+        # Not enough data for meaningful percentiles
+        return np.array([np.nan, np.nan, np.nan], dtype=float)
+    
+    try:
+        result = np.percentile(valid_vals, [16, 50, 84])
+        # Force result to be a 1D array of exactly 3 elements
+        if result.ndim == 0:
+            # Scalar result (shouldn't happen, but be safe)
+            return np.array([result, result, result], dtype=float)
+        elif len(result) == 3:
+            return np.array(result, dtype=float)
+        else:
+            # Unexpected shape
+            return np.array([np.nan, np.nan, np.nan], dtype=float)
+    except Exception:
+        return np.array([np.nan, np.nan, np.nan], dtype=float)
 
 def main():
     global TRACKING_RANGE
@@ -314,7 +333,8 @@ def main():
                 continue
             
             z = all_redshifts[sn] if sn < len(all_redshifts) else None
-            if z is None: 
+            if z is None:
+                print(f"  Warning: Snapshot {sn} has no redshift (index out of bounds), skipping...")
                 continue
 
             # OPT: Read all fields once
@@ -360,17 +380,28 @@ def main():
                 bm_t = bm[valid_idx]
 
                 # Store percentiles directly (no intermediate storage)
+                pct_bh = pct(bh_t)
+                pct_md = pct(md_t)
+                pct_id = pct(id_t)
+                pct_rm = pct(rm_t)
+                pct_bm = pct(bm_t)
+                
+                # Validate that all returns are 3-element arrays
+                assert len(pct_bh) == 3 and len(pct_md) == 3, f"pct() returned wrong shape: bh={pct_bh.shape}, md={pct_md.shape}"
+                
                 all_results[i].append({
                     'z': z,
-                    'bh': pct(bh_t),
-                    'md': pct(md_t),
-                    'id': pct(id_t),
-                    'rm': pct(rm_t),
-                    'bm': pct(bm_t),
+                    'bh': pct_bh,
+                    'md': pct_md,
+                    'id': pct_id,
+                    'rm': pct_rm,
+                    'bm': pct_bm,
                 })
         
         except Exception as e:
-            print(f"  Warning: Snapshot {sn} failed ({e}), skipping...")
+            import traceback
+            print(f"  Warning: Snapshot {sn} failed ({e})")
+            print(f"    Traceback: {traceback.format_exc()}")
             continue
 
     print(f"\nData extraction completed in {time()-t_start:.1f}s")
@@ -409,7 +440,11 @@ def main():
             continue
 
         def arr(key, j): 
-            return np.array([r[key][j] for r in results])
+            # Handle empty results gracefully
+            values = [r[key][j] for r in results]
+            if len(values) == 0:
+                return np.array([], dtype=float)
+            return np.array(values)
 
         for label, key, color, ls, lw in channels:
             p16, p50, p84 = arr(key, 0), arr(key, 1), arr(key, 2)
