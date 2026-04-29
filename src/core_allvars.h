@@ -171,6 +171,7 @@ struct GALAXY
     float InstabilityDrivenBHaccretionMass[ABSOLUTEMAXSNAPS]; //jayde note
     float MergerDrivenBHaccretionMass[ABSOLUTEMAXSNAPS]; //jayde note
     float BHMergerMass[ABSOLUTEMAXSNAPS]; // jayde note Track BH mass growth from mergers separately
+    float BHSeedMass;
 
     float TimeOfLastMajorMerger;
     float TimeOfLastMinorMerger;

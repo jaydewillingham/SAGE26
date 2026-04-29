@@ -99,6 +99,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].Heating = 0.0;
     galaxies[p].r_heat = 0.0;
     galaxies[p].QuasarModeBHaccretionMass = 0.0;
+    galaxies[p].BHSeedMass = 0.0;
     for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
         galaxies[p].RadioModeBHaccretionMass[snap] = 0.0;
         galaxies[p].MergerDrivenBHaccretionMass[snap] = 0.0;

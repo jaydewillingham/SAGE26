@@ -235,6 +235,11 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
             BHaccrete = galaxies[merger_centralgal].ColdGas;
         }
 
+        //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
+        if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
+            galaxies[merger_centralgal].BHSeedMass = BHaccrete;
+        }
+
         metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas, galaxies[merger_centralgal].MetalsColdGas);
         galaxies[merger_centralgal].BlackHoleMass += BHaccrete;
         galaxies[merger_centralgal].ColdGas -= BHaccrete;

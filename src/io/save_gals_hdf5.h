@@ -94,6 +94,7 @@ struct HDF5_GALAXY_OUTPUT
     float *InstabilityBulgeMass;
     float *Cooling;
     float *Heating;
+    float *BHSeedMass;
     float *QuasarModeBHaccretionMass;
     float *RadioModeBHaccretionMass; //jayde note
     float *InstabilityDrivenBHaccretionMass; //jayde note
