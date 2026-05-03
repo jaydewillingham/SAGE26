@@ -155,17 +155,7 @@ def main():
     parser.add_argument('-s', '--snapshot', type=int, default=None)
     args = parser.parse_args()
 
-    print("="*60)
-    print("BH Seed Mass Histogram Generator")
-    print("="*60)
-
     file_list = sorted(glob.glob(args.input_pattern))
-
-    if not file_list:
-        print("No files found!")
-        sys.exit(1)
-
-    print(f"Found {len(file_list)} files")
 
     sim = read_simulation_params(file_list[0])
     Hubble_h = sim['Hubble_h']
@@ -175,11 +165,8 @@ def main():
     print(f"Hubble_h: {Hubble_h}")
 
     id_field = find_id_field(file_list, snap_num)
-    if id_field is None:
-        print("No ID field found!")
-        sys.exit(1)
 
-    print("\nReading data (deduplicated)...")
+    print("\nReading data ...")
 
     ids, bh_mass, stellar_mass, mvir, bh_seed = read_all_fields(
         file_list, snap_num, id_field
