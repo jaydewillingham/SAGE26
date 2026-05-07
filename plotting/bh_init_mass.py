@@ -9,6 +9,56 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # ============================================================================
+# MATPLOTLIB STYLE CONFIGURATION
+# ============================================================================
+
+plt.rcParams['figure.figsize'] = (8.34, 6.25)
+plt.rcParams['figure.dpi'] = 140
+plt.rcParams['figure.autolayout'] = True
+
+# X axis
+plt.rcParams['xtick.major.size'] = 7.5
+plt.rcParams['xtick.major.width'] = 1.5
+plt.rcParams['xtick.minor.size'] = 5.5
+plt.rcParams['xtick.minor.width'] = 0.5
+plt.rcParams['xtick.direction'] = 'in'
+plt.rcParams['xtick.top'] = True
+plt.rcParams['xtick.labelsize'] = 16
+plt.rcParams['xtick.major.pad'] = 9
+
+# Y axis
+plt.rcParams['ytick.major.size'] = 7.5
+plt.rcParams['ytick.major.width'] = 1.5
+plt.rcParams['ytick.minor.size'] = 5.5
+plt.rcParams['ytick.minor.width'] = 0.5
+plt.rcParams['ytick.direction'] = 'in'
+plt.rcParams['ytick.right'] = True
+plt.rcParams['ytick.labelsize'] = 16
+
+# Font sizes and styles
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Palatino']
+plt.rcParams['font.size'] = 20.0
+plt.rcParams['text.usetex'] = True
+plt.rcParams['axes.titlesize'] = 12
+plt.rcParams['axes.labelsize'] = 20
+plt.rcParams['legend.fontsize'] = 14
+plt.rcParams['legend.title_fontsize'] = 16
+
+# Line widths
+plt.rcParams['axes.linewidth'] = 1.5
+plt.rcParams['grid.linewidth'] = 1
+plt.rcParams['lines.linewidth'] = 2
+plt.rcParams['lines.solid_capstyle'] = 'round'
+
+# Legend
+plt.rcParams['legend.frameon'] = False
+
+# Color cycle: blue, orange, green, red, purple, black, grey
+plt.rcParams['axes.prop_cycle'] = plt.cycler('color', 
+    ['#2196F3', '#00B945', '#FF9500', '#FF2C00', '#845B97', '#474747', '#9e9e9e'])
+
+# ============================================================================
 # CONFIGURATION
 # ============================================================================
 
@@ -124,21 +174,21 @@ def plot_bh_seed_histogram(bh_seed_masses, output_path):
         return
 
     print(f"\nStats:")
-    print(f"N = {len(valid)}")
+    #print(f"N = {len(valid)}")
     print(f"Min = {valid.min():.3e}")
     print(f"Max = {valid.max():.3e}")
     print(f"Mean = {valid.mean():.3e}")
 
     log_m = np.log10(valid)
 
-    plt.figure(figsize=(10,6))
-    plt.hist(log_m, bins=50, density=True, alpha=0.7)
-    plt.xlabel(r'$\log_{10}(M_{\rm BH, seed})$')
-    plt.ylabel('Density')
-    plt.title('BH Seed Mass Distribution')
+    fig, ax = plt.subplots()
+    ax.hist(log_m, bins=50, density=True, alpha=0.75, edgecolor='black', linewidth=0.5)
+    ax.set_xlabel(r'$\log_{10}(M_{\rm BH} [M_{\odot}])$')
+    ax.set_ylabel('Density')
+    #ax.set_title('BH Seed Mass Distribution')
+    #ax.grid(True, alpha=0.3, linestyle='--')
 
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300)
+    plt.savefig(output_path, dpi=plt.rcParams['figure.dpi'], bbox_inches='tight')
     plt.close()
 
     print(f"✓ Saved to {output_path}")
@@ -150,12 +200,27 @@ def plot_bh_seed_histogram(bh_seed_masses, output_path):
 
 def main():
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input-pattern', default='./output/millennium/model_*.hdf5')
-    parser.add_argument('-s', '--snapshot', type=int, default=None)
+    parser = argparse.ArgumentParser(description='Analyze BH seed masses from simulation data')
+    parser.add_argument('-i', '--input-pattern', default='./output/millennium/model_*.hdf5',
+                        help='Glob pattern for input HDF5 files')
+    parser.add_argument('-s', '--snapshot', type=int, default=None,
+                        help='Snapshot number (default: latest from header)')
+    parser.add_argument('--no-bh-cut', action='store_true',
+                        help='Disable BH mass cut (MIN_Z0_BH_MASS)')
+    parser.add_argument('--no-stellar-cut', action='store_true',
+                        help='Disable stellar mass cut (MIN_STELLAR_MASS_LOG)')
+    parser.add_argument('--no-halo-cut', action='store_true',
+                        help='Disable halo mass cut (MIN_HALO_MASS_LOG)')
+    parser.add_argument('--no-cuts', action='store_true',
+                        help='Disable all mass cuts')
+    
     args = parser.parse_args()
 
     file_list = sorted(glob.glob(args.input_pattern))
+
+    if not file_list:
+        print(f"Error: No files found matching pattern '{args.input_pattern}'")
+        sys.exit(1)
 
     sim = read_simulation_params(file_list[0])
     Hubble_h = sim['Hubble_h']
@@ -172,7 +237,7 @@ def main():
         file_list, snap_num, id_field
     )
 
-    print(f"Final galaxy count: {len(ids)}")
+    print(f"Initial galaxy count: {len(ids)}")
 
     # convert units
     bh_mass *= 1e10 / Hubble_h
@@ -187,16 +252,39 @@ def main():
     # assume fixed seed if missing
     bh_seed[missing] = 1e4
 
-    # mass cuts
-    mass_cut = (
-        (bh_mass > MIN_Z0_BH_MASS) &
-        (stellar_mass > 10**MIN_STELLAR_MASS_LOG) &
-        (mvir > 10**MIN_HALO_MASS_LOG)
-    )
+    # Apply mass cuts based on arguments
+    if args.no_cuts:
+        # Skip all cuts
+        print("All mass cuts disabled")
+        mass_cut = np.ones(len(bh_seed), dtype=bool)
+    else:
+        # Build mass cut based on individual flags
+        mass_cut = np.ones(len(bh_seed), dtype=bool)
+        
+        if not args.no_bh_cut:
+            bh_cut = (bh_mass > MIN_Z0_BH_MASS)
+            print(f"  BH mass cut (>{MIN_Z0_BH_MASS:.1e}): {bh_cut.sum()} / {len(bh_mass)} pass")
+            mass_cut &= bh_cut
+        else:
+            print(f"  BH mass cut disabled")
+        
+        if not args.no_stellar_cut:
+            stellar_cut = (stellar_mass > 10**MIN_STELLAR_MASS_LOG)
+            print(f"  Stellar mass cut (>{10**MIN_STELLAR_MASS_LOG:.1e}): {stellar_cut.sum()} / {len(stellar_mass)} pass")
+            mass_cut &= stellar_cut
+        else:
+            print(f"  Stellar mass cut disabled")
+        
+        if not args.no_halo_cut:
+            halo_cut = (mvir > 10**MIN_HALO_MASS_LOG)
+            print(f"  Halo mass cut (>{10**MIN_HALO_MASS_LOG:.1e}): {halo_cut.sum()} / {len(mvir)} pass")
+            mass_cut &= halo_cut
+        else:
+            print(f"  Halo mass cut disabled")
 
     bh_seed = bh_seed[mass_cut]
 
-    print(f"After cuts: {len(bh_seed)} galaxies")
+    print(f"\nAfter cuts: {len(bh_seed)} galaxies")
 
     output_dir = Path(file_list[0]).parent / 'plots'
     output_dir.mkdir(exist_ok=True)
