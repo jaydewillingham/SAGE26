@@ -4,7 +4,7 @@
 
 FileNameGalaxies   model
 %OutputDir         /<absolute>/<root>/<path>/sage-model/output/millennium/
-OutputDir   /home/jwilling/SAGE26/output/millennium/
+OutputDir           /home/jwilling/SAGE26/output/millennium/
 
 FirstFile         0
 LastFile          7
@@ -63,6 +63,9 @@ BulgeSizeOn                 3   %0: switch off; 1: Shen eq. 33; 2: Shen eq. 32; 
 SaveFullSFH                 1   %0: switch off
 TrackICSAssembly            1   %0: switch off; 1: track ICS_disrupt and ICS_accrete
 
+DynamicDisruptionSplit      2   %0: fixed fraction; 1: mass-ratio only; 2: concentration-weighted
+
+
 %------------------------------------------
 %----- SAGE model parameters --------------
 %------------------------------------------
@@ -85,6 +88,9 @@ BlackHoleGrowthRate         0.015   %fraction of cold gas added to the BH during
 ThreshMajorMerger           0.3     %major merger when mass ratio greater than this
 ThresholdSatDisruption      1.0     %Mvir-to-baryonic mass ratio threshold for satellite merger or disruption
 FractionDisruptedToICS      0.7     %fraction of disrupted satellite stellar mass to ICS (rest goes to BCG); 1.0 = original behavior
+
+DisruptionSplitAlpha        0.25    %Base exponent for mass-ratio dependence of ICL fraction (DynamicDisruptionSplit>=1)
+DisruptionSplitCref         10.0    %Reference concentration for concentration weighting (DynamicDisruptionSplit=2)
 
 Yield                       0.025   %fraction of SF mass produced as metals
 RecycleFraction             0.43    %fraction of SF mass instantaneously recycled back to cold
