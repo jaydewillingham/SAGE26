@@ -67,7 +67,6 @@ MONSTER_SEED_THRESHOLD = 1e9  # M_sun
 # ============================================================================
 # This is the default redshift-snapshot mapping for the Millennium simulation
 # Snapshot 0 = z=127, Snapshot 62 = z=0 (present day)
-# Source: http://www.mpa-garching.mpg.de/millennium/snapshots.php
 MILLENNIUM_SNAP_TO_Z = {
     0: 127.0, 1: 65.74, 2: 40.0, 3: 26.66, 4: 19.36, 5: 14.78, 6: 11.66,
     7: 9.44, 8: 7.64, 9: 6.44, 10: 5.48, 11: 4.73, 12: 4.19, 13: 3.72,
