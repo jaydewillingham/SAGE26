@@ -247,17 +247,6 @@ def create_2d_density_plot_combined(
     n_bins_y=30,
     total_passed=None
 ):
-    """
-    Cleaner combined 2D density plot.
-
-    Improvements:
-    - Shared axes
-    - Reduced whitespace
-    - Smaller cleaner colourbars
-    - Explicit log10(density) plotting
-    - Consistent colour scaling
-    - Removed duplicate inner labels
-    """
 
     # ------------------------------------------------------------------
     # Figure setup
@@ -598,7 +587,7 @@ def main():
     plt.close()
 
     # ========================================================================
-    # PLOTTING - 2D DENSITY PLOTS (NEW: Seed Mass vs Redshift)
+    # PLOTTING - 2D DENSITY PLOTS (NEW: Seed Mass vs Redshift) 
     # ========================================================================
     print("\n" + "="*70)
     print("Creating 2D density plot: Seed Mass vs Redshift (Combined)")
