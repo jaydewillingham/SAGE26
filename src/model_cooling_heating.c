@@ -529,44 +529,14 @@ double cooling_recipe_cgm(const int gal, const double dt, struct GALAXY *galaxie
     }
     const double tff = sqrt(2.0 * r_cool / g_accel); // code units
 
-    // ========================================================================
-    // STEP 2b: CHARACTERISTIC RADIUS FOR PRECIPITATION CRITERION (0.1 R_vir)
-    // ========================================================================
-    // Evaluating t_cool/t_ff at r_cool is circular for the NFW solver, which
-    // converges to the radius where t_cool = t_ff (ratio ≈ 1 by construction),
-    // making all haloes appear thermally unstable regardless of mass.
-    // Instead, evaluate at 0.1 R_vir: a fixed CGM scale where the ratio
-    // correctly reflects halo mass (massive → lower NFW density → higher
-    // t_cool/t_ff → thermally stable). McCourt et al. 2012 framework.
-    const double G_cgs = 6.674e-8;
-    const double r_char_cgs = 0.1 * Rvir_cgs;
-    const double rho_char = cgm_density_at_radius(r_char_cgs, CGMgas_cgs, Rvir_cgs,
-                                                   Mvir_Msun, z, profile_type);
+    // Critical ratio for precipitation
+    const double tcool_over_tff = tcool / tff;
 
-    // Default to r_cool values if 0.1 Rvir evaluation fails
-    double tcool_char = tcool;
-    double tff_char = tff;
-    double tcool_over_tff_char = tcool / tff;
 
-    if(rho_char > 0.0) {
-        const double tcool_char_cgs = (1.5 * mu * PROTONMASS * BOLTZMANN * temp) / (rho_char * lambda);
-        const double M_enc_char = cgm_enclosed_mass(r_char_cgs, Mvir_cgs, Rvir_cgs,
-                                                     Mvir_Msun, z, profile_type);
-        if(M_enc_char > 0.0) {
-            const double g_char_cgs = G_cgs * M_enc_char / (r_char_cgs * r_char_cgs);
-            if(g_char_cgs > 0.0) {
-                const double tff_char_cgs = sqrt(2.0 * r_char_cgs / g_char_cgs);
-                tcool_char = tcool_char_cgs / run_params->UnitTime_in_s;
-                tff_char = tff_char_cgs / run_params->UnitTime_in_s;
-                tcool_over_tff_char = tcool_char_cgs / tff_char_cgs;
-            }
-        }
-    }
-
-    // Store characteristic-radius values for diagnostics/plotting
-    galaxies[gal].tcool = tcool_char;
-    galaxies[gal].tff = tff_char;
-    galaxies[gal].tcool_over_tff = tcool_over_tff_char;
+    // Save to galaxy struct for potential diagnostics
+    galaxies[gal].tcool = tcool;
+    galaxies[gal].tff = tff;
+    galaxies[gal].tcool_over_tff = tcool_over_tff;
 
     // ========================================================================
     // STEP 3: PRECIPITATION CRITERION
@@ -574,25 +544,25 @@ double cooling_recipe_cgm(const int gal, const double dt, struct GALAXY *galaxie
 
     const double precipitation_threshold = 10;  // default=10, McCourt et al. 2012
     const double transition_width = 2.0;  // Smooth transition over factor ~2
-
+    
     double precipitation_fraction = 0.0;
-
-    if(tcool_over_tff_char < precipitation_threshold) {
+    
+    if(tcool_over_tff < precipitation_threshold) {
         // UNSTABLE: Precipitation cooling
-        double instability_factor = precipitation_threshold / tcool_over_tff_char;
+        double instability_factor = precipitation_threshold / tcool_over_tff;
         instability_factor = fmin(instability_factor, 3.0);
         precipitation_fraction = tanh(instability_factor / 2.0);
-
-    } else if(tcool_over_tff_char < precipitation_threshold + transition_width) {
+        
+    } else if(tcool_over_tff < precipitation_threshold + transition_width) {
         // TRANSITION: Smoothly reduce precipitation_fraction to zero
-        const double x = (tcool_over_tff_char - precipitation_threshold) / transition_width;
+        const double x = (tcool_over_tff - precipitation_threshold) / transition_width;
         precipitation_fraction = 0.5 * (1.0 - tanh(x));
-
+        
     } else {
-        if(tcool_char > 0) {
+        if(tcool > 0) {
         // Cooling rate: dM/dt = M_CGM / t_cool
-        coolingGas = galaxies[gal].CGMgas / tcool_char * dt;
-
+        coolingGas = galaxies[gal].CGMgas / tcool * dt;
+        
         // Safety check
         if(coolingGas > galaxies[gal].CGMgas) {
             coolingGas = galaxies[gal].CGMgas;
@@ -606,11 +576,11 @@ double cooling_recipe_cgm(const int gal, const double dt, struct GALAXY *galaxie
     // ========================================================================
     // STEP 4: CALCULATE PRECIPITATION RATE
     // ========================================================================
-
+    
     if(precipitation_fraction > 0.0) {
         // Gas precipitates on the free-fall timescale when thermally unstable
         // This is the key physical insight: dM/dt = f_precip * M_CGM / t_ff
-        const double precip_rate = precipitation_fraction * galaxies[gal].CGMgas / tff_char;
+        const double precip_rate = precipitation_fraction * galaxies[gal].CGMgas / tff;
         coolingGas = precip_rate * dt;
         
         // Physical limits
@@ -645,8 +615,8 @@ double cooling_recipe_cgm(const int gal, const double dt, struct GALAXY *galaxie
 
     // Depletion timescale (only meaningful for CGM-regime haloes)
     if(galaxies[gal].Regime == 0) {
-        if(precipitation_fraction > 1e-6 && isfinite(tff_char)) {
-            const double depletion_time = tff_char / precipitation_fraction;
+        if(precipitation_fraction > 1e-6 && isfinite(tff)) {
+            const double depletion_time = tff / precipitation_fraction;
             galaxies[gal].tdeplete = isfinite(depletion_time) ? (float)depletion_time : -1.0f;
         } else {
             galaxies[gal].tdeplete = -1.0f;
@@ -724,8 +694,6 @@ double cooling_recipe_regime_aware(const int gal, const double dt, struct GALAXY
     return total_cooling;
 }
 
-
-
 double do_AGN_heating(double coolingGas, const int centralgal, const double dt, const double x, const double rcool, struct GALAXY *galaxies, const struct params *run_params)
 {
     double AGNrate, EDDrate, AGNaccreted, AGNcoeff, AGNheating, metallicity;
@@ -802,6 +770,7 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         // accreted mass onto black hole
         metallicity = get_metallicity(galaxies[centralgal].HotGas, galaxies[centralgal].MetalsHotGas);
         galaxies[centralgal].BlackHoleMass += AGNaccreted;
+        galaxies[centralgal].RadioModeBHaccretionMass[galaxies[centralgal].SnapNum] += AGNaccreted; 
         galaxies[centralgal].HotGas -= AGNaccreted;
         galaxies[centralgal].MetalsHotGas -= metallicity * AGNaccreted;
 
@@ -898,6 +867,7 @@ double do_AGN_heating_cgm(double coolingGas, const int centralgal, const double 
         // accreted mass onto black hole
         metallicity = get_metallicity(galaxies[centralgal].CGMgas, galaxies[centralgal].MetalsCGMgas);
         galaxies[centralgal].BlackHoleMass += AGNaccreted;
+        galaxies[centralgal].RadioModeBHaccretionMass[galaxies[centralgal].SnapNum] += AGNaccreted; 
         galaxies[centralgal].CGMgas -= AGNaccreted;
         galaxies[centralgal].MetalsCGMgas -= metallicity * AGNaccreted;
 
