@@ -47,10 +47,10 @@ GD14_DIR = './output/millennium_gd14/'
 KD12_DIR = './output/millennium_kd12/'
 KMT09_DIR = './output/millennium_kmt09/'
 K13_DIR = './output/millennium_k13/'
-FFB_BK25_DIR = './output/millennium_ffb_bk25/'
-FFB_BK25_SMOOTH_DIR = './output/millennium_ffb_bk25_smooth/'
+FFB_BK25_DIR = './output/millennium_ffb_mbk25/'
+FFB_BK25_SMOOTH_DIR = './output/millennium_ffb_mbk25_smooth/'
 FFB_NOSIGMOID_DIR = './output/millennium_nosigmoid/'
-MINIUCHUU_DIR = './output/miniuchuu/'
+MINIUCHUU_DIR = './output/microuchuu/'
 MODEL_FILE = 'model_0.hdf5'
 OBS_DIR = './data/'
 
@@ -550,15 +550,17 @@ def mass_function_bootstrap(log_masses, volume, binwidth=0.1, mass_range=None,
     nbins = int(round((ma - mi) / binwidth))
 
     # Bootstrap resampling
-    boot_phi = np.zeros((n_boot, len(centers)))
+    boot_phi = np.full((n_boot, len(centers)), np.nan)
     for b in range(n_boot):
         idx = np.random.randint(0, n_gal, n_gal)
         boot_masses = log_masses[idx]
         counts, _ = np.histogram(boot_masses, range=(mi, ma), bins=nbins)
         with np.errstate(divide='ignore'):
-            boot_phi[b, :] = np.log10(counts / volume / binwidth)
+            vals = np.log10(counts / volume / binwidth)
+        # Replace -inf (empty bins) with nan so percentiles ignore them
+        boot_phi[b, :] = np.where(np.isfinite(vals), vals, np.nan)
 
-    # Compute percentiles
+    # Compute percentiles (nanpercentile skips nan, so empty-bin samples are excluded)
     with np.errstate(invalid='ignore'):
         phi_lo = np.nanpercentile(boot_phi, 16, axis=0)
         phi_hi = np.nanpercentile(boot_phi, 84, axis=0)
@@ -610,6 +612,74 @@ def binned_median(x, y, bins, min_count=5):
             p75[i] = np.percentile(vals, 75)
 
     return centers, med, p25, p75
+
+
+def binned_percentiles(x, y, bins, percentiles=(16, 50, 84), min_count=20):
+    """Compute binned percentiles of *y* as a function of *x*.
+
+    Parameters
+    ----------
+    x, y : array-like
+        Data arrays.
+    bins : array-like
+        Bin edges in x.
+    percentiles : tuple
+        Percentiles to compute (e.g. (16, 50, 84)).
+    min_count : int
+        Minimum number of points required in a bin.
+
+    Returns
+    -------
+    centers : array
+        Bin centers.
+    pct : array, shape (len(percentiles), nbins)
+        Percentiles per bin; NaN for bins with insufficient counts.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    ok = np.isfinite(x) & np.isfinite(y)
+    x = x[ok]
+    y = y[ok]
+
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    nbins = len(bins) - 1
+    pct = np.full((len(percentiles), nbins), np.nan)
+
+    for i in range(nbins):
+        m = (x >= bins[i]) & (x < bins[i + 1])
+        if np.sum(m) >= min_count:
+            pct[:, i] = np.percentile(y[m], percentiles)
+
+    return centers, pct
+
+
+def plot_binned_median_1sigma(
+    ax,
+    x,
+    y,
+    bins,
+    *,
+    color,
+    label,
+    alpha=0.25,
+    lw=3.0,
+    ls='-',
+    min_count=20,
+    zorder_fill=3,
+    zorder_line=4,
+):
+    """Plot a median line with a 16--84% (1\u03c3) shaded band."""
+    centers, pct = binned_percentiles(x, y, bins, percentiles=(16, 50, 84), min_count=min_count)
+    p16, p50, p84 = pct
+    valid = np.isfinite(p50) & np.isfinite(p16) & np.isfinite(p84)
+    if not np.any(valid):
+        return None
+
+    ax.fill_between(centers[valid], p16[valid], p84[valid],
+                    color=color, alpha=alpha, lw=0.0, zorder=zorder_fill)
+    (line,) = ax.plot(centers[valid], p50[valid],
+                      color=color, lw=lw, ls=ls, label=label, zorder=zorder_line)
+    return line
 
 
 def density_contour(x, y, bins=100, weights=None, smooth=1.5):
@@ -1518,11 +1588,11 @@ def plot_1_stellar_mass_function_ssfr_s(primary, vanilla):
     # ax.fill_between(x, phi_q_lo, phi_q_hi, color='firebrick', alpha=0.3, edgecolor='none', zorder=10)
     
     # Star-forming
-    ax.plot(x, phi_sf, color='dodgerblue', lw=4, label='SAGE26 Star-forming', zorder=10)
-    ax.fill_between(x, phi_sf_lo, phi_sf_hi, color='dodgerblue', alpha=0.3, edgecolor='none', zorder=10)
+    ax.plot(x, phi_sf, color='steelblue', lw=4, label='SAGE26 Star-forming', zorder=10)
+    ax.fill_between(x, phi_sf_lo, phi_sf_hi, color='steelblue', alpha=0.3, edgecolor='none', zorder=10)
     # C16 (vanilla)
     # ax.plot(x_v, phi_q_v, color='firebrick', lw=2, ls='--', label='C16 Quiescent')
-    ax.plot(x_v, phi_sf_v, color='dodgerblue', lw=2, ls='--', label='C16 Star-forming')
+    ax.plot(x_v, phi_sf_v, color='steelblue', lw=2, ls='--', label='SAGE16 Star-forming')
 
     # Observational data: GAMA (Moffett+16) with 'd' markers
     valid_D = ~np.isnan(gama['D'])
@@ -1562,8 +1632,8 @@ def plot_1_stellar_mass_function_ssfr_s(primary, vanilla):
     ax.set_xlabel(r'$\log_{10}\ m_{\mathrm{*}}\ [M_{\odot}]$')
 
     handles, labels = ax.get_legend_handles_labels()
-    sim_h = [h for h, l in zip(handles, labels) if l.startswith(('SAGE26', 'C16'))]
-    sim_l = [l for l in labels if l.startswith(('SAGE26', 'C16'))]
+    sim_h = [h for h, l in zip(handles, labels) if l.startswith(('SAGE26', 'SAGE16'))]
+    sim_l = [l for l in labels if l.startswith(('SAGE26', 'SAGE16'))]
     obs_h = [h for h, l in zip(handles, labels) if l.startswith('Baldry') or l.startswith('Moffett') or l.startswith('Bell')]
     obs_l = [l for l in labels if l.startswith('Baldry') or l.startswith('Moffett') or l.startswith('Bell')]
     leg1 = _standard_legend(ax, loc='lower left', handles=sim_h, labels=sim_l)
@@ -1666,11 +1736,11 @@ def plot_1_stellar_mass_function_ssfr_q(primary, vanilla):
     ax.fill_between(x, phi_q_lo, phi_q_hi, color='firebrick', alpha=0.3, edgecolor='none', zorder=10)
     
     # Star-forming
-    # ax.plot(x, phi_sf, color='dodgerblue', lw=3, label='SAGE26 Star-forming')
-    # ax.fill_between(x, phi_sf_lo, phi_sf_hi, color='dodgerblue', alpha=0.3, edgecolor='none', zorder=10)
+    # ax.plot(x, phi_sf, color='steelblue', lw=3, label='SAGE26 Star-forming')
+    # ax.fill_between(x, phi_sf_lo, phi_sf_hi, color='steelblue', alpha=0.3, edgecolor='none', zorder=10)
     # C16 (vanilla)
-    ax.plot(x_v, phi_q_v, color='firebrick', lw=2, ls='--', label='C16 Quiescent')
-    # ax.plot(x_v, phi_sf_v, color='dodgerblue', lw=2, ls='--', label='C16 Star-forming')
+    ax.plot(x_v, phi_q_v, color='firebrick', lw=2, ls='--', label='SAGE16 Quiescent')
+    # ax.plot(x_v, phi_sf_v, color='steelblue', lw=2, ls='--', label='C16 Star-forming')
 
     # Observational data: GAMA (Moffett+16) with 'd' markers
     valid_D = ~np.isnan(gama['D'])
@@ -1708,8 +1778,8 @@ def plot_1_stellar_mass_function_ssfr_q(primary, vanilla):
     ax.set_xlabel(r'$\log_{10}\ m_{\mathrm{*}}\ [M_{\odot}]$')
 
     handles, labels = ax.get_legend_handles_labels()
-    sim_h = [h for h, l in zip(handles, labels) if l.startswith(('SAGE26', 'C16'))]
-    sim_l = [l for l in labels if l.startswith(('SAGE26', 'C16'))]
+    sim_h = [h for h, l in zip(handles, labels) if l.startswith(('SAGE26', 'SAGE16'))]
+    sim_l = [l for l in labels if l.startswith(('SAGE26', 'SAGE16'))]
     obs_h = [h for h, l in zip(handles, labels) if l.startswith('Baldry') or l.startswith('Moffett') or l.startswith('Bell')]
     obs_l = [l for l in labels if l.startswith('Baldry') or l.startswith('Moffett') or l.startswith('Bell')]
     leg1 = _standard_legend(ax, loc='lower left', handles=sim_h, labels=sim_l)
@@ -1796,20 +1866,17 @@ def plot_3_gas_metallicity_vs_stellar_mass(primary, vanilla):
     gas_Z = metallicity_12logOH(primary['MetalsColdGas'][w],
                                 primary['ColdGas'][w])
 
-    X, Y, Z = density_contour(log_mass, gas_Z,
-                              bins=[np.linspace(8.0, 12.0, 101),
-                                    np.linspace(8.0, 10.0, 101)])
-
     # --- Plot ---
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    if Z.max() > 0:
-        levels = sigma_contour_levels(Z)
-        if levels is not None:
-            ax.contourf(X, Y, Z, levels=levels, cmap='Blues_r', alpha=0.6, zorder=9)
-            ax.contour(X, Y, Z, levels=levels, colors='steelblue',
-                       linestyles='-', alpha=1.0, linewidths=1.5)
+    mass_bins = np.arange(8.0, 12.0 + 0.1, 0.1)
+    plot_binned_median_1sigma(
+        ax, log_mass, gas_Z, mass_bins,
+        color='steelblue', label='SAGE26',
+        alpha=0.25, lw=3.5, min_count=50,
+        zorder_fill=2, zorder_line=3,
+    )
 
     # --- C16 (Vanilla) model ---
     w_v = ((vanilla['StellarMass'] > 1e8)
@@ -1819,12 +1886,12 @@ def plot_3_gas_metallicity_vs_stellar_mass(primary, vanilla):
         log_mass_v = np.log10(vanilla['StellarMass'][w_v])
         gas_Z_v = metallicity_12logOH(vanilla['MetalsColdGas'][w_v],
                                       vanilla['ColdGas'][w_v])
-        if DILUTE and len(log_mass_v) > DILUTE:
-            idx_v = sample(range(len(log_mass_v)), DILUTE)
-            log_mass_v = log_mass_v[idx_v]
-            gas_Z_v = gas_Z_v[idx_v]
-        ax.scatter(log_mass_v, gas_Z_v, marker='x', s=50, c='purple',
-                   alpha=0.1, label='C16', rasterized=True, zorder=9)
+        plot_binned_median_1sigma(
+            ax, log_mass_v, gas_Z_v, mass_bins,
+            color='purple', label='SAGE16', ls='--',
+            alpha=0.20, lw=3.0, min_count=50,
+            zorder_fill=4, zorder_line=5,
+        )
 
     # --- Observational data ---
     for obs in load_mzr_observations():
@@ -1832,12 +1899,12 @@ def plot_3_gas_metallicity_vs_stellar_mass(primary, vanilla):
             ax.errorbar(obs['mass'], obs['Z'], yerr=obs['yerr'],
                         fmt=obs['fmt'], color=obs['color'],
                         markeredgecolor='k', markeredgewidth=1.0, linewidth=1.0,
-                        markerfacecolor = 'lightgray', ms=8,
+                        markerfacecolor = 'gray', ms=8,
                         label=obs['label'], alpha=0.6, zorder=9)
         else:
             ax.plot(obs['mass'], obs['Z'], obs['fmt'],
                     markeredgecolor='k', markeredgewidth=1.0, linewidth=1.0,
-                    markerfacecolor = 'lightgray', ms=8,
+                    markerfacecolor = 'gray', ms=8,
                     color=obs['color'], label=obs['label'], alpha=0.6, zorder=9)
 
     ax.set_xlim(8.0, 12.0)
@@ -1849,20 +1916,15 @@ def plot_3_gas_metallicity_vs_stellar_mass(primary, vanilla):
     ax.set_xlabel(r'$\log_{10}\ m_{\mathrm{*}}\ [M_{\odot}]$')
     ax.set_ylabel(r'$12\ +\ \log_{10}\ (\mathrm{O/H})$')
 
-    from matplotlib.patches import Patch
-    sim_handles = [Patch(facecolor='steelblue', alpha=0.6, label='SAGE26')]
-    sim_labels = ['SAGE26']
-    obs_handles, obs_labels = [], []
-    for h, l in zip(*ax.get_legend_handles_labels()):
-        if l == 'C16':
-            sim_handles.append(h)
-            sim_labels.append(l)
-        else:
-            obs_handles.append(h)
-            obs_labels.append(l)
-    leg1 = _standard_legend(ax, loc='upper right', handles=sim_handles, labels=sim_labels)
+    handles, labels = ax.get_legend_handles_labels()
+    sim_set = {'SAGE26', 'SAGE16'}
+    sim_h = [h for h, l in zip(handles, labels) if l in sim_set]
+    sim_l = [l for l in labels if l in sim_set]
+    obs_h = [h for h, l in zip(handles, labels) if l not in sim_set]
+    obs_l = [l for l in labels if l not in sim_set]
+    leg1 = _standard_legend(ax, loc='upper right', handles=sim_h, labels=sim_l)
     ax.add_artist(leg1)
-    _standard_legend(ax, loc='upper left', handles=obs_handles, labels=obs_labels)
+    _standard_legend(ax, loc='upper left', handles=obs_h, labels=obs_l)
     fig.tight_layout()
 
     save_figure(fig, os.path.join(OUTPUT_DIR,
@@ -1885,32 +1947,29 @@ def plot_4_bh_bulge_mass(primary, vanilla):
     log_bulge = np.log10(primary['BulgeMass'][w])
     log_bh = np.log10(primary['BlackHoleMass'][w])
 
-    X, Y, Z = density_contour(log_bulge, log_bh,
-                              bins=[np.linspace(8.0, 12.0, 101),
-                                    np.linspace(6.0, 10.0, 101)])
-
     # --- Plot ---
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    if Z.max() > 0:
-        levels = sigma_contour_levels(Z)
-        if levels is not None:
-            ax.contourf(X, Y, Z, levels=levels, cmap='Blues_r', alpha=0.6, zorder=8)
-            ax.contour(X, Y, Z, levels=levels, colors='steelblue',
-                       linestyles='-', alpha=1.0, linewidths=1.5)
+    bulge_bins = np.arange(8.0, 12.0 + 0.1, 0.1)
+    plot_binned_median_1sigma(
+        ax, log_bulge, log_bh, bulge_bins,
+        color='steelblue', label='SAGE26',
+        alpha=0.25, lw=3.5, min_count=50,
+        zorder_fill=2, zorder_line=3,
+    )
 
     # --- C16 (Vanilla) model ---
     w_v = (vanilla['BlackHoleMass'] > 0) & (vanilla['BulgeMass'] > 0)
     if np.any(w_v):
         log_bulge_v = np.log10(vanilla['BulgeMass'][w_v])
         log_bh_v = np.log10(vanilla['BlackHoleMass'][w_v])
-        if DILUTE and len(log_bulge_v) > DILUTE:
-            idx_v = sample(range(len(log_bulge_v)), DILUTE)
-            log_bulge_v = log_bulge_v[idx_v]
-            log_bh_v = log_bh_v[idx_v]
-        ax.scatter(log_bulge_v, log_bh_v, marker='x', s=50, c='purple',
-                   alpha=0.1, label='C16', rasterized=True, zorder=9)
+        plot_binned_median_1sigma(
+            ax, log_bulge_v, log_bh_v, bulge_bins,
+            color='purple', label='SAGE16', ls='--',
+            alpha=0.20, lw=3.0, min_count=50,
+            zorder_fill=4, zorder_line=5,
+        )
 
     # --- Observational data ---
     obs = load_bh_bulge_observations()
@@ -1919,16 +1978,16 @@ def plot_4_bh_bulge_mass(primary, vanilla):
     ax.errorbar(obs['log_M_sph'][sersic], obs['log_M_BH'][sersic],
                 yerr=[obs['yerr'][0][sersic], obs['yerr'][1][sersic]],
                 xerr=[obs['xerr'][0][sersic], obs['xerr'][1][sersic]],
-                color='k', ls='none', lw=1, marker='d', ms=8, alpha=0.6, zorder=10,
+                color='k', ls='none', lw=1, marker='d', ms=8, alpha=0.6, zorder=3,
                 markeredgecolor='k', markeredgewidth=0.8,
-                        markerfacecolor = 'lightgray',
+                        markerfacecolor = 'gray',
                 label='S13 core')
     ax.errorbar(obs['log_M_sph'][obs['core']], obs['log_M_BH'][obs['core']],
                 yerr=[obs['yerr'][0][obs['core']], obs['yerr'][1][obs['core']]],
                 xerr=[obs['xerr'][0][obs['core']], obs['xerr'][1][obs['core']]],
                 color='k', ls='none', lw=1, marker='o', ms=8,
-                markeredgecolor='k', markeredgewidth=0.8, alpha=0.6, zorder=10,
-                        markerfacecolor = 'lightgray',
+                markeredgecolor='k', markeredgewidth=0.8, alpha=0.6, zorder=3,
+                        markerfacecolor = 'gray',
                 label=_tex_safe(r'S13 S\'{e}rsic'))
 
     ax.plot(obs['haring_rix_x'], obs['haring_rix_y'], 'k--',
@@ -1943,20 +2002,15 @@ def plot_4_bh_bulge_mass(primary, vanilla):
     ax.set_xlabel(r'$\log_{10}\ m_{\mathrm{bulge}}\ [M_{\odot}]$')
     ax.set_ylabel(r'$\log_{10}\ m_{\mathrm{BH}}\ [M_{\odot}]$')
 
-    from matplotlib.patches import Patch
-    sim_handles = [Patch(facecolor='steelblue', alpha=0.6, label='SAGE26')]
-    sim_labels = ['SAGE26']
-    obs_handles, obs_labels = [], []
-    for h, l in zip(*ax.get_legend_handles_labels()):
-        if l == 'C16':
-            sim_handles.append(h)
-            sim_labels.append(l)
-        else:
-            obs_handles.append(h)
-            obs_labels.append(l)
-    leg1 = _standard_legend(ax, loc='upper left', handles=obs_handles, labels=obs_labels)
+    handles, labels = ax.get_legend_handles_labels()
+    sim_set = {'SAGE26', 'SAGE16'}
+    sim_h = [h for h, l in zip(handles, labels) if l in sim_set]
+    sim_l = [l for l in labels if l in sim_set]
+    obs_h = [h for h, l in zip(handles, labels) if l not in sim_set]
+    obs_l = [l for l in labels if l not in sim_set]
+    leg1 = _standard_legend(ax, loc='upper left', handles=obs_h, labels=obs_l)
     ax.add_artist(leg1)
-    _standard_legend(ax, loc='lower right', handles=sim_handles, labels=sim_labels)
+    _standard_legend(ax, loc='lower right', handles=sim_h, labels=sim_l)
     fig.tight_layout()
 
     save_figure(fig, os.path.join(OUTPUT_DIR,
@@ -1979,32 +2033,29 @@ def plot_5_stellar_halo_mass(primary, vanilla):
     log_mvir = np.log10(primary['Mvir'][w])
     log_mstar = np.log10(primary['StellarMass'][w])
 
-    X, Y, Z = density_contour(log_mvir, log_mstar,
-                              bins=[np.linspace(10.0, 15.0, 101),
-                                    np.linspace(8.0, 12.0, 101)])
-
     # --- Plot ---
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    if Z.max() > 0:
-        levels = sigma_contour_levels(Z)
-        if levels is not None:
-            ax.contourf(X, Y, Z, levels=levels, cmap='Blues_r', alpha=0.6, zorder=8)
-            ax.contour(X, Y, Z, levels=levels, colors='steelblue',
-                       linestyles='-', alpha=1.0, linewidths=1.5)
+    mvir_bins = np.arange(10.0, 15.0 + 0.1, 0.1)
+    plot_binned_median_1sigma(
+        ax, log_mvir, log_mstar, mvir_bins,
+        color='steelblue', label='SAGE26',
+        alpha=0.25, lw=3.5, min_count=50,
+        zorder_fill=2, zorder_line=3,
+    )
 
     # --- C16 (Vanilla) model ---
     w_v = (vanilla['StellarMass'] > 0) & (vanilla['Mvir'] > 0)
     if np.any(w_v):
         log_mvir_v = np.log10(vanilla['Mvir'][w_v])
         log_mstar_v = np.log10(vanilla['StellarMass'][w_v])
-        if DILUTE and len(log_mvir_v) > DILUTE:
-            idx_v = sample(range(len(log_mvir_v)), DILUTE)
-            log_mvir_v = log_mvir_v[idx_v]
-            log_mstar_v = log_mstar_v[idx_v]
-        ax.scatter(log_mvir_v, log_mstar_v, marker='x', s=50, c='purple',
-                   alpha=0.1, label='C16', rasterized=True, zorder=9)
+        plot_binned_median_1sigma(
+            ax, log_mvir_v, log_mstar_v, mvir_bins,
+            color='purple', label='SAGE16', ls='--',
+            alpha=0.20, lw=3.0, min_count=50,
+            zorder_fill=4, zorder_line=5,
+        )
 
     # --- Observational data ---
     obs = load_shmr_observations()
@@ -2015,7 +2066,7 @@ def plot_5_stellar_halo_mass(primary, vanilla):
 
     if 'romeo' in obs:
         ax.scatter(obs['romeo']['mvir'], obs['romeo']['mstar'],
-                   marker='o', s=50, c='lightgray', label='Romeo+20',
+                   marker='o', s=50, c='gray', label='Romeo+20',
                    edgecolor='k', linewidth=0.8, alpha=0.6, zorder=8)
 
     if 'kravtsov' in obs:
@@ -2024,7 +2075,7 @@ def plot_5_stellar_halo_mass(primary, vanilla):
         ax.errorbar(k['mvir'], k['mstar'], xerr=xerr,
                     fmt='s', color='k', ms=8, lw=1,
                     markeredgecolor='k', markeredgewidth=0.8,
-                    markerfacecolor = 'lightgray', alpha=0.6, zorder=8,
+                    markerfacecolor = 'gray', alpha=0.6, zorder=8,
                     label='Kravtsov+18')
 
     if 'taylor' in obs:
@@ -2033,7 +2084,7 @@ def plot_5_stellar_halo_mass(primary, vanilla):
                     xerr=t['xerr'], yerr=t['yerr'],
                     fmt='d', color='k', ms=8, lw=1,
                     markeredgecolor='k', markeredgewidth=0.8,
-                    markerfacecolor = 'lightgray', alpha=0.6, zorder=9,
+                    markerfacecolor = 'gray', alpha=0.6, zorder=9,
                     label='Taylor+20')
 
     ax.set_xlim(10.0, 15.0)
@@ -2045,20 +2096,15 @@ def plot_5_stellar_halo_mass(primary, vanilla):
     ax.set_xlabel(r'$\log_{10}\ M_{\mathrm{vir}}\ [M_{\odot}]$')
     ax.set_ylabel(r'$\log_{10}\ m_{\mathrm{*}}\ [M_{\odot}]$')
 
-    from matplotlib.patches import Patch
-    sim_handles = [Patch(facecolor='steelblue', alpha=0.6, label='SAGE26')]
-    sim_labels = ['SAGE26']
-    obs_handles, obs_labels = [], []
-    for h, l in zip(*ax.get_legend_handles_labels()):
-        if l == 'C16':
-            sim_handles.append(h)
-            sim_labels.append(l)
-        else:
-            obs_handles.append(h)
-            obs_labels.append(l)
-    leg1 = _standard_legend(ax, loc='upper left', handles=sim_handles, labels=sim_labels)
+    handles, labels = ax.get_legend_handles_labels()
+    sim_set = {'SAGE26', 'SAGE16'}
+    sim_h = [h for h, l in zip(handles, labels) if l in sim_set]
+    sim_l = [l for l in labels if l in sim_set]
+    obs_h = [h for h, l in zip(handles, labels) if l not in sim_set]
+    obs_l = [l for l in labels if l not in sim_set]
+    leg1 = _standard_legend(ax, loc='upper left', handles=sim_h, labels=sim_l)
     ax.add_artist(leg1)
-    _standard_legend(ax, loc='lower right', handles=obs_handles, labels=obs_labels)
+    _standard_legend(ax, loc='lower right', handles=obs_h, labels=obs_l)
     fig.tight_layout()
 
     save_figure(fig, os.path.join(OUTPUT_DIR,
@@ -2120,7 +2166,7 @@ def plot_6_bulge_mass_size(primary, vanilla):
     ax.scatter(log_mass_m, log_rad_m, c='orangered', s=20, alpha=0.6,
                edgecolors='darkred', linewidths=0.3, label='Merger-driven',
                rasterized=True)
-    ax.scatter(log_mass_i, log_rad_i, c='dodgerblue', s=20, alpha=0.6,
+    ax.scatter(log_mass_i, log_rad_i, c='steelblue', s=20, alpha=0.6,
                edgecolors='darkblue', linewidths=0.3, label='Instability-driven',
                rasterized=True)
     ax.scatter(log_mass_x, log_rad_x, c='mediumorchid', s=15, alpha=0.4,
@@ -2168,11 +2214,11 @@ def plot_7_tcool_tff_distribution(snapdata):
     print('Plot 7: t_cool/t_ff distribution')
 
     snap_info = [
-        (SNAP_Z4, f'z = {REDSHIFTS[SNAP_Z4]:.1f}'),
-        (SNAP_Z3, f'z = {REDSHIFTS[SNAP_Z3]:.1f}'),
-        (SNAP_Z2, f'z = {REDSHIFTS[SNAP_Z2]:.1f}'),
-        (SNAP_Z1, f'z = {REDSHIFTS[SNAP_Z1]:.1f}'),
         (SNAP_Z0, f'z = {REDSHIFTS[SNAP_Z0]:.1f}'),
+        (SNAP_Z1, f'z = {REDSHIFTS[SNAP_Z1]:.1f}'),
+        (SNAP_Z2, f'z = {REDSHIFTS[SNAP_Z2]:.1f}'),
+        (SNAP_Z3, f'z = {REDSHIFTS[SNAP_Z3]:.1f}'),
+        (SNAP_Z4, f'z = {REDSHIFTS[SNAP_Z4]:.1f}'),
     ]
     cmap_violin = plt.cm.plasma
     colors_violin = [cmap_violin(x) for x in np.linspace(0.0, 0.85, len(snap_info))]
@@ -2246,76 +2292,136 @@ def plot_7_tcool_tff_distribution(snapdata):
 
 def plot_8_precipitation_fraction(snapdata):
     """
-    Precipitation fraction vs t_cool/t_ff: theoretical model curve
-    with galaxy scatter at z=0 and z=2.
+    Figure 8a: Precipitation fraction vs t_cool/t_ff: theoretical model curve
+    with mass-stratified galaxy scatter at z=0 and z=2.
+
+    Figure 8b: Median t_cool/t_ff vs halo mass at z=0 and z=2, showing
+    the mass dependence of thermal stability directly.
     """
     print('Plot 8: Precipitation fraction model')
 
+    snap_list = [(SNAP_Z0, 'z=0'), (SNAP_Z2, 'z=2')]
+    markers   = ['x', '+']
+    zcolors   = ['steelblue', 'firebrick']
+    mass_bins = np.arange(10.0, 15.5, 0.25)   # log10(Mvir/Msun) bin edges
+
+    # ------------------------------------------------------------------ #
+    # Figure 8a: f_precip vs t_cool/t_ff                                  #
+    # ------------------------------------------------------------------ #
     fig, ax = plt.subplots()
 
-    # Theoretical curve
-    ratio_arr = np.logspace(np.log10(0.5), 2.5, 2000)
-    f_precip = precipitation_fraction(ratio_arr)
-
-    ax.plot(ratio_arr, f_precip, 'teal', lw=3,
+    ratio_arr = np.logspace(np.log10(0.5), 4.0, 2000)
+    f_curve   = precipitation_fraction(ratio_arr)
+    ax.plot(ratio_arr, f_curve, 'teal', lw=3,
             label='SAGE26 inflow model', zorder=5)
 
-    ax.axvline(x=10, color='goldenrod', ls='--', lw=1.5, alpha=0.6,
+    ax.axvline(x=10, color='goldenrod', ls='--', lw=1.5, alpha=0.8,
                label=r'$t_{\rm cool}/t_{\rm ff} = 10$')
-    ax.axvline(x=12, color='goldenrod', ls=':', lw=1.0, alpha=1.0)
-
-    ax.axvspan(0.5, 10, alpha=0.06, color='red')
-    ax.axvspan(10, 12, alpha=0.06, color='goldenrod')
-    ax.axvspan(12, 300, alpha=0.06, color='dodgerblue')
-
-    ax.text(3, 0.55, 'Thermally\nUnstable', fontsize=14, ha='center',
+    ax.axvspan(0.5, 10,  alpha=0.06, color='red')
+    ax.axvspan(10,  12,  alpha=0.06, color='goldenrod')
+    ax.axvspan(12,  1e4, alpha=0.06, color='steelblue')
+    ax.text(2.5,  0.55, 'Thermally\nUnstable', fontsize=12, ha='center',
             va='center', color='firebrick', fontweight='bold')
-    ax.text(11, 0.70, 'Transition', fontsize=11, ha='center',
-            va='center', color='goldenrod', fontweight='bold', rotation=90)
-    ax.text(50, 0.12, 'Thermally\nStable', fontsize=14, ha='center',
-            va='center', color='dodgerblue', fontweight='bold')
+    ax.text(200,  0.55, 'Thermally\nStable',   fontsize=12, ha='center',
+            va='center', color='steelblue',  fontweight='bold')
 
-    # Galaxy scatter at z=0 and z=2
+    # Mass-stratified sampling: N_per_bin points from each 0.5-dex mass bin
+    N_PER_BIN = 80
     sc = None
-    markers = ['x', 'D']
-    for (snap, label), mark in zip(
-            [(SNAP_Z0, 'z=0'), (SNAP_Z2, 'z=2')], markers):
+    for (snap, label), mark, zcol in zip(snap_list, markers, zcolors):
         if snap not in snapdata:
             continue
-        d = snapdata[snap]
+        d     = snapdata[snap]
         ratio = d['tcool_over_tff']
-        w = np.where(
-            (d['Regime'] == 0) &
-            (ratio > 0) & np.isfinite(ratio) &
-            (d['Type'] == 0) &
-            (d['Mvir'] > 1e10) &
-            (ratio < 200)
+        logm  = np.log10(d['Mvir'])   # Mvir already in 1e10 Msun units
+        base  = np.where(
+            (d['Regime'] == 0) & (ratio > 0) & np.isfinite(ratio) &
+            (d['Type'] == 0)  & (d['Mvir'] > 1e10)
         )[0]
-        if len(w) > 0:
-            if len(w) > 500:
-                w = np.random.choice(w, 500, replace=False)
-            r_vals = ratio[w]
-            f_vals = precipitation_fraction(r_vals)
-            sc = ax.scatter(r_vals, f_vals, s=40, alpha=0.6,
-                            c=np.log10(d['Mvir'][w]), cmap='plasma',
-                            marker=mark, edgecolors='none', zorder=10,
-                            label=f'Galaxies ({label})')
+
+        sel = []
+        for mlo, mhi in zip(mass_bins[:-1], mass_bins[1:]):
+            inbin = base[(logm[base] > mlo) & (logm[base] <= mhi)]
+            if len(inbin) > N_PER_BIN:
+                inbin = np.random.choice(inbin, N_PER_BIN, replace=False)
+            sel.append(inbin)
+        if not sel:
+            continue
+        w      = np.concatenate(sel)
+        r_vals = ratio[w]
+        f_vals = precipitation_fraction(r_vals)
+        sc = ax.scatter(r_vals, f_vals, s=150, alpha=0.6,
+                        c=np.log10(d['Mvir'][w]), cmap='plasma',
+                        vmin=10, vmax=14,
+                        marker=mark, edgecolors='none', zorder=10,
+                        label=label)
 
     if sc is not None:
         cbar = plt.colorbar(sc, ax=ax, pad=0.02, aspect=30)
         cbar.set_label(r'$\log_{10}(M_{\rm vir}/M_{\odot})$')
 
     ax.set_xscale('log')
-    ax.set_xlim(0.5, 300)
+    ax.set_xlim(0.5, 1e4)
     ax.set_ylim(-0.05, 1.05)
     ax.set_xlabel(r'$t_{\rm cool}/t_{\rm ff}$')
     ax.set_ylabel(r'$f_{\rm inflow}$')
-
     _standard_legend(ax, loc='upper right')
     fig.tight_layout()
-
     save_figure(fig, os.path.join(OUTPUT_DIR,
                 'PrecipitationFraction' + OUTPUT_FORMAT))
+
+    # ------------------------------------------------------------------ #
+    # Figure 8b: Median t_cool/t_ff vs halo mass                          #
+    # ------------------------------------------------------------------ #
+    fig2, ax2 = plt.subplots()
+
+    ax2.axhline(y=np.log10(10), color='goldenrod', ls='--', lw=2,
+                label=r'$t_{\rm cool}/t_{\rm ff} = 10$ (threshold)')
+    ax2.axhspan(np.log10(5), np.log10(20), alpha=0.10, color='goldenrod')
+
+
+    for (snap, label), zcol, mark in zip(snap_list, zcolors, markers):
+        if snap not in snapdata:
+            continue
+        d     = snapdata[snap]
+        ratio = d['tcool_over_tff']
+        logm  = np.log10(d['Mvir'])
+        base  = np.where(
+            (d['Regime'] == 0) & (ratio > 0) & np.isfinite(ratio) &
+            (d['Type'] == 0)  & (d['Mvir'] > 1e10)
+        )[0]
+
+        meds, p16, p84, xc = [], [], [], []
+        for mlo, mhi in zip(mass_bins[:-1], mass_bins[1:]):
+            inbin = base[(logm[base] > mlo) & (logm[base] <= mhi)]
+            if len(inbin) < 10:
+                continue
+            lr = np.log10(ratio[inbin])
+            lr = lr[np.isfinite(lr)]
+            if len(lr) < 5:
+                continue
+            meds.append(np.median(lr))
+            p16.append(np.percentile(lr, 16))
+            p84.append(np.percentile(lr, 84))
+            xc.append(0.5 * (mlo + mhi) + 10)   # convert to log10(M/Msun)
+
+        if not meds:
+            continue
+        xc   = np.array(xc)
+        meds = np.array(meds)
+        p16  = np.array(p16)
+        p84  = np.array(p84)
+
+        ax2.fill_between(xc, p16, p84, alpha=0.25, color=zcol)
+        ax2.plot(xc, meds, color=zcol, lw=2, marker=mark,
+                 ms=10, label=label)
+
+    ax2.set_xlabel(r'$\log_{10}(M_{\rm vir}/M_{\odot})$')
+    ax2.set_ylabel(r'$\log_{10}(t_{\rm cool}/t_{\rm ff})$')
+    _standard_legend(ax2, loc='best')
+    fig2.tight_layout()
+    save_figure(fig2, os.path.join(OUTPUT_DIR,
+                'PrecipitationFractionMassTrend' + OUTPUT_FORMAT))
 
 
 # ========================== PLOT 9: CGM FRACTIONS & DEPLETION ==========================
@@ -2699,45 +2805,61 @@ def plot_10_sfe_ffb(snapdata):
         (d['StellarMass'] > 0) & (d['Mvir'] > 0) &
         (d['FFBRegime'] == 1) & (d['Type'] == 0)
     )[0]
-    if len(w_ffb) >= DILUTE:
-        w_ffb = np.random.choice(w_ffb, DILUTE, replace=False)
     w_normal = np.where(
         (d['StellarMass'] > 0) & (d['Mvir'] > 0) &
         (d['FFBRegime'] == 0) & (d['Type'] == 0)
     )[0]
-    if len(w_normal) >= DILUTE:
-        w_normal = np.random.choice(w_normal, DILUTE, replace=False)
 
-    if len(w_ffb) > 0:
-        eps_ffb = d['StellarMass'][w_ffb] / (BARYON_FRAC * d['Mvir'][w_ffb])
-        log_mvir_ffb = np.log10(d['Mvir'][w_ffb])
-        ax.scatter(log_mvir_ffb, eps_ffb, s=50, c='firebrick', alpha=0.8,
-                   edgecolors='darkred', linewidths=0.8,
-                   label=f'FFB galaxies', zorder=2, rasterized=True)
+    def _median_percentile(log_mvir, eps, nbins=20):
+        """Return bin centres, median, 16th and 84th percentiles."""
+        bins = np.linspace(log_mvir.min(), log_mvir.max(), nbins + 1)
+        centres = 0.5 * (bins[:-1] + bins[1:])
+        median = np.full(nbins, np.nan)
+        lo = np.full(nbins, np.nan)
+        hi = np.full(nbins, np.nan)
+        for i in range(nbins):
+            mask = (log_mvir >= bins[i]) & (log_mvir < bins[i + 1])
+            if np.sum(mask) >= 10:
+                median[i] = np.median(eps[mask])
+                lo[i] = np.percentile(eps[mask], 16)
+                hi[i] = np.percentile(eps[mask], 84)
+        good = ~np.isnan(median)
+        return centres[good], median[good], lo[good], hi[good]
+
+    # Compute epsilon for both populations
+    eps_normal, log_mvir_normal = None, None
+    eps_ffb, log_mvir_ffb = None, None
 
     if len(w_normal) > 0:
         eps_normal = d['StellarMass'][w_normal] / (BARYON_FRAC * d['Mvir'][w_normal])
         log_mvir_normal = np.log10(d['Mvir'][w_normal])
-        ax.scatter(log_mvir_normal, eps_normal, s=50, c='dodgerblue',
-                   alpha=0.1, edgecolors='navy', linewidths=0.8,
-                   label=f'non FFB galaxies', zorder=3, rasterized=True)
 
-    ax.axhline(y=0.2, color='firebrick', ls='--', lw=1.5, alpha=1.0,
-               label=r'$\varepsilon = 0.2$ (FFB expectation)')
-    ax.axhline(y=0.03, color='dodgerblue', ls='--', lw=1.5, alpha=1.0,
-               label=r'$\varepsilon = 0.03$ (normal)')
+    if len(w_ffb) > 0:
+        eps_ffb = d['StellarMass'][w_ffb] / (BARYON_FRAC * d['Mvir'][w_ffb])
+        log_mvir_ffb = np.log10(d['Mvir'][w_ffb])
+
+    # Median lines with percentile bands
+    if log_mvir_normal is not None:
+        x, med, lo, hi = _median_percentile(log_mvir_normal, eps_normal)
+        ax.plot(x, med, color='steelblue', lw=2, label='Non-FFB galaxies', zorder=3)
+        ax.fill_between(x, lo, hi, color='steelblue', alpha=0.2, zorder=2)
+
+    if log_mvir_ffb is not None:
+        x, med, lo, hi = _median_percentile(log_mvir_ffb, eps_ffb)
+        ax.plot(x, med, color='firebrick', lw=2, label='FFB galaxies', zorder=5)
+        ax.fill_between(x, lo, hi, color='firebrick', alpha=0.2, zorder=4)
 
     M_ffb = ffb_threshold_mass_msun(z_snap)
     ax.axvline(x=np.log10(M_ffb), color='goldenrod', ls=':', lw=2,
                alpha=0.6,
-               label=fr'$M_{{\rm ffb}}$ = {M_ffb:.1e} $M_\odot$')
+               label=fr'$M_{{\rm vir, FFB}}$ = {M_ffb:.1e} $M_\odot$')
 
     ax.set_yscale('log')
     ax.set_xlabel(r'$\log_{10}(M_{\rm vir}/M_{\odot})$')
     ax.set_ylabel(r'$\varepsilon_{\mathrm{SFE}} \equiv m_*/(\,f_b \, M_{\rm vir})$')
     ax.set_ylim(1e-4, 2.0)
 
-    _standard_legend(ax, loc='lower right')
+    _standard_legend(ax, loc='upper left')
     fig.tight_layout()
 
     save_figure(fig, os.path.join(OUTPUT_DIR,
@@ -2789,7 +2911,7 @@ def plot_11_ffb_properties(snapdata):
         Re_norm = 1.678 * (d['DiskRadius'][w_normal] / HUBBLE_H) * 1e3
         ok = Re_norm > 0
         if np.sum(ok) > 0:
-            ax1.scatter(log_ms_norm[ok], Re_norm[ok], s=50, c='dodgerblue',
+            ax1.scatter(log_ms_norm[ok], Re_norm[ok], s=50, c='steelblue',
                         alpha=0.1, edgecolors='navy', linewidths=0.8,
                         label='non FFB galaxies', zorder=3, rasterized=True)
 
@@ -2822,7 +2944,7 @@ def plot_11_ffb_properties(snapdata):
         ok = Z_ratio > 0
         if np.sum(ok) > 0:
             ax2.scatter(log_ms_norm[ok], np.log10(Z_ratio[ok]), s=50,
-                        c='dodgerblue', alpha=0.1, edgecolors='navy',
+                        c='steelblue', alpha=0.1, edgecolors='navy',
                         linewidths=0.8, label='non FFB galaxies', zorder=3, rasterized=True)
 
     ax2.axhline(y=np.log10(0.1), color='goldenrod', ls='--', lw=1.5,
@@ -2848,7 +2970,7 @@ def plot_11_ffb_properties(snapdata):
         ok = sfr > 0
         if np.sum(ok) > 0:
             ax3.scatter(log_ms_norm[ok], np.log10(sfr[ok]), s=50,
-                        c='dodgerblue', alpha=0.1, edgecolors='navy',
+                        c='steelblue', alpha=0.1, edgecolors='navy',
                         linewidths=0.8, label='non FFB galaxies', zorder=3, rasterized=True)
     ax3.set_xlabel(r'$\log_{10}(m_*/M_{\odot})$')
     ax3.set_ylabel(r'$\log_{10}(\mathrm{SFR}\ [M_{\odot}\,\mathrm{yr}^{-1}])$')
@@ -2909,7 +3031,7 @@ def plot_11b_ffb_histograms(snapdata):
     hist_kwargs_ffb = dict(bins=30, alpha=0.7, color='firebrick',
                            edgecolor='darkred', linewidth=1.2,
                            label='FFB galaxies', density=True)
-    hist_kwargs_norm = dict(bins=30, alpha=0.5, color='dodgerblue',
+    hist_kwargs_norm = dict(bins=30, alpha=0.5, color='steelblue',
                             edgecolor='navy', linewidth=1.2,
                             label='non-FFB galaxies', density=True)
 
@@ -3099,7 +3221,7 @@ def plot_12_sfh_ffb(snapdata):
         if len(times) > 1:
             sfrs = np.array(sfrs)
             lbl = 'non FFB galaxies' if i == 0 else None
-            ax.plot(times, sfrs, '--', color='dodgerblue', alpha=1.0,
+            ax.plot(times, sfrs, '--', color='steelblue', alpha=1.0,
                     lw=1.5, label=lbl, zorder=3)
 
     ax.set_xlabel('Cosmic time [Gyr]')
@@ -3126,6 +3248,661 @@ def plot_12_sfh_ffb(snapdata):
 
     save_figure(fig, os.path.join(OUTPUT_DIR,
                 'SFH_FFB' + OUTPUT_FORMAT))
+
+
+# ========================== PLOT 12b: FFB REGIME HISTORY ==========================
+
+def plot_12b_ffb_regime_history(snapdata):
+    """
+    Timeline plot showing when each tracked galaxy is in the FFB regime.
+
+    For each galaxy selected in plot_12 (most massive FFB galaxies at z~10 and
+    mass-matched non-FFB galaxies), draws a horizontal bar coloured red when
+    FFBRegime==1 and blue when FFBRegime==0.  The FFB→non-FFB transition for
+    each red galaxy is marked with a vertical dashed line labelled with the
+    transition redshift.
+
+    Also verifies:
+      - FFB galaxies are continuously FFB up to the transition and non-FFB
+        afterwards (any violations are printed to console).
+      - Non-FFB galaxies never enter the FFB regime (violations printed).
+    """
+    print('Plot 12b: FFB regime history of tracked galaxies')
+
+    snap = SNAP_Z10
+    if snap not in snapdata:
+        print('  Snapshot not available. Skipping.')
+        return
+
+    d = snapdata[snap]
+
+    w_ffb = np.where(
+        (d['StellarMass'] > 0) & (d['FFBRegime'] == 1) & (d['Type'] == 0)
+    )[0]
+    w_normal = np.where(
+        (d['StellarMass'] > 0) & (d['FFBRegime'] == 0) & (d['Type'] == 0)
+    )[0]
+
+    if len(w_ffb) == 0:
+        print('  No FFB galaxies found at z~10. Skipping.')
+        return
+
+    # Select top FFB galaxies by stellar mass
+    N_track = min(10, len(w_ffb))
+    mass_order = np.argsort(d['StellarMass'][w_ffb])[::-1]
+    ffb_idx = w_ffb[mass_order[:N_track]]
+    ffb_gal_ids = d['GalaxyIndex'][ffb_idx]
+
+    # Build set of galaxies ever in FFB regime (to exclude from normal pool)
+    fig_g_snaps = [s for s in range(8, 64) if s in snapdata]
+    ever_ffb_gids = set()
+    for s in fig_g_snaps:
+        sd = snapdata[s]
+        w_ffb_snap = np.where(sd['FFBRegime'] == 1)[0]
+        ever_ffb_gids.update(sd['GalaxyIndex'][w_ffb_snap].astype(int))
+
+    # Mass-match non-FFB galaxies from the never-FFB pool
+    never_ffb_mask = np.array([int(d['GalaxyIndex'][i]) not in ever_ffb_gids
+                               for i in w_normal])
+    w_never_ffb = w_normal[never_ffb_mask]
+
+    norm_gal_ids = np.array([], dtype=np.int64)
+    if len(w_never_ffb) > 0:
+        norm_masses = d['StellarMass'][w_never_ffb]
+        matched_norm_idx = []
+        used = set()
+        for fi in ffb_idx:
+            ffb_mass = d['StellarMass'][fi]
+            diffs = np.abs(norm_masses - ffb_mass)
+            for j in np.argsort(diffs):
+                if j not in used:
+                    matched_norm_idx.append(w_never_ffb[j])
+                    used.add(j)
+                    break
+        if matched_norm_idx:
+            norm_idx = np.array(matched_norm_idx)
+            norm_gal_ids = d['GalaxyIndex'][norm_idx]
+
+    cosmic_times = {s: cosmic_time_gyr(REDSHIFTS[s]) for s in fig_g_snaps}
+
+    # Collect (cosmic_time, FFBRegime) per galaxy
+    # ffb_regime_tracks[gid] = list of (t, regime, snap)
+    all_gal_ids = list(ffb_gal_ids.astype(int)) + list(norm_gal_ids.astype(int))
+    regime_tracks = {gid: [] for gid in all_gal_ids}
+
+    for s in fig_g_snaps:
+        sd = snapdata[s]
+        gids = sd['GalaxyIndex']
+        t = cosmic_times[s]
+        for gid in all_gal_ids:
+            match = np.where(gids == gid)[0]
+            if len(match) > 0:
+                regime_tracks[gid].append((t, int(sd['FFBRegime'][match[0]]), s))
+
+    # ---- Diagnostics ----
+    print('  --- FFB galaxy regime history ---')
+    ffb_transition_times = {}   # gid -> (t_first_nonffb_after_ffb, z_transition)
+    for gid in ffb_gal_ids.astype(int):
+        track = regime_tracks[gid]
+        if not track:
+            continue
+        track_sorted = sorted(track, key=lambda x: x[0])
+        regimes = [(t, r, s) for t, r, s in track_sorted]
+
+        transition_idx = None
+        for k in range(len(regimes) - 1):
+            if regimes[k][1] == 1 and regimes[k + 1][1] == 0:
+                transition_idx = k + 1
+                break
+
+        if transition_idx is None:
+            print(f'    GalaxyIndex {gid}: no FFB→non-FFB transition in tracked range')
+            continue
+
+        t_trans, _, s_trans = regimes[transition_idx]
+        z_trans = REDSHIFTS[s_trans]
+        ffb_transition_times[gid] = (t_trans, z_trans)
+        print(f'    GalaxyIndex {gid}: first non-FFB after FFB at z={z_trans:.2f} '
+              f'(t={t_trans:.3f} Gyr)')
+
+        # Clean-transition check: any non-FFB point before first 1->0 crossing?
+        for t, r, s in regimes[:transition_idx]:
+            if r == 0:
+                z_viol = REDSHIFTS[s]
+                print(f'    WARNING: GalaxyIndex {gid} has FFBRegime=0 at '
+                      f'z={z_viol:.2f} (snap {s}) before first 1→0 crossing')
+
+    print('  --- Non-FFB galaxy verification ---')
+    for gid in norm_gal_ids.astype(int):
+        track = regime_tracks[gid]
+        ffb_violations = [(t, s) for t, r, s in track if r == 1]
+        if ffb_violations:
+            for t_v, s_v in ffb_violations:
+                print(f'    WARNING: Non-FFB galaxy {gid} has FFBRegime=1 at '
+                      f'z={REDSHIFTS[s_v]:.2f} (snap {s_v})')
+        else:
+            print(f'    GalaxyIndex {gid}: confirmed never-FFB throughout')
+
+    # ---- Oscillation check (all tracked galaxies) ----
+    print('  --- Oscillation check ---')
+    any_oscillation = False
+    for gid in all_gal_ids:
+        track = sorted(regime_tracks[gid], key=lambda x: x[0])
+        regime_seq = [r for t, r, s in track]
+        # Count transitions: consecutive pairs that differ
+        transitions = [(track[k], track[k + 1])
+                       for k in range(len(regime_seq) - 1)
+                       if regime_seq[k] != regime_seq[k + 1]]
+        n_transitions = len(transitions)
+        if n_transitions > 1:
+            any_oscillation = True
+            tag = 'FFB' if gid in ffb_gal_ids.astype(int) else 'non-FFB'
+            print(f'    OSCILLATION: GalaxyIndex {gid} ({tag}) switches '
+                  f'{n_transitions} times:')
+            for (t0, r0, s0), (t1, r1, s1) in transitions:
+                print(f'      z={REDSHIFTS[s0]:.2f} → z={REDSHIFTS[s1]:.2f}  '
+                      f'FFBRegime {r0} → {r1}')
+        elif n_transitions == 1:
+            (t0, r0, s0), (t1, r1, s1) = transitions[0]
+            tag = 'FFB' if gid in ffb_gal_ids.astype(int) else 'non-FFB'
+            print(f'    GalaxyIndex {gid} ({tag}): single clean transition '
+                  f'FFBRegime {r0}→{r1} at z={REDSHIFTS[s1]:.2f}')
+        else:
+            tag = 'FFB' if gid in ffb_gal_ids.astype(int) else 'non-FFB'
+            regime_val = regime_seq[0] if regime_seq else '?'
+            print(f'    GalaxyIndex {gid} ({tag}): no transitions — '
+                  f'always FFBRegime={regime_val}')
+    if not any_oscillation:
+        print('  No oscillating galaxies found.')
+
+    # ---- Plot ----
+    n_ffb  = len(ffb_gal_ids)
+    n_norm = len(norm_gal_ids)
+    n_total = n_ffb + n_norm
+
+    fig, ax = plt.subplots(figsize=(8, 0.7 * n_total + 1.5))
+    x_min, x_max = 0.0, 2.5
+
+    row_labels = []
+    transition_marked = False   # for legend deduplication
+
+    for row_idx, gid in enumerate(list(ffb_gal_ids.astype(int)) +
+                                   list(norm_gal_ids.astype(int))):
+        is_ffb_gal = gid in ffb_gal_ids.astype(int)
+        track = sorted(regime_tracks[gid], key=lambda x: x[0])
+        if not track:
+            row_labels.append(str(gid))
+            continue
+
+        times   = [t for t, r, s in track]
+        regimes = [r for t, r, s in track]
+
+        # Draw segments between consecutive snapshots
+        for k in range(len(times) - 1):
+            t0, t1 = times[k], times[k + 1]
+            r = regimes[k]
+            color = 'firebrick' if r == 1 else 'steelblue'
+            lw = 3.5
+            ax.plot([t0, t1], [row_idx, row_idx], '-', color=color, lw=lw,
+                    solid_capstyle='butt', zorder=2)
+
+        # Final segment (last snap → extend half a step for visibility)
+        if len(times) >= 2:
+            dt = times[-1] - times[-2]
+        else:
+            dt = 0.05
+        r_last = regimes[-1]
+        color_last = 'firebrick' if r_last == 1 else 'steelblue'
+        ax.plot([times[-1], times[-1] + 0.5 * dt], [row_idx, row_idx],
+                '-', color=color_last, lw=3.5, solid_capstyle='butt', zorder=2)
+
+        # Mark transition for FFB galaxies
+        if is_ffb_gal and gid in ffb_transition_times:
+            t_trans, z_trans = ffb_transition_times[gid]
+            if not (x_min <= t_trans <= x_max):
+                continue
+            vline_lbl = 'FFB → non-FFB transition' if not transition_marked else None
+            ax.axvline(t_trans, color='goldenrod', ls='--', lw=1.2,
+                       alpha=0.85, zorder=3, label=vline_lbl)
+            transition_marked = True
+            ax.annotate(
+                fr'$z={z_trans:.1f}$',
+                xy=(t_trans, row_idx),
+                xytext=(4, 3), textcoords='offset points',
+                fontsize=7, color='goldenrod', va='bottom',
+            )
+
+        mstar = d['StellarMass'][
+            np.where(d['GalaxyIndex'] == gid)[0][0]] * 1e10
+        tag = 'FFB' if is_ffb_gal else 'non-FFB'
+        row_labels.append(fr'{tag}  $\log M_*={np.log10(mstar):.1f}$')
+
+    # Y-axis: one row per galaxy
+    ax.set_yticks(range(n_total))
+    ax.set_yticklabels(row_labels, fontsize=8)
+    ax.set_ylim(-0.6, n_total - 0.4)
+
+    ax.set_xlabel('Cosmic time [Gyr]')
+    ax.set_xlim(x_min, x_max)
+
+    # Top axis: redshift
+    ax_top = ax.twiny()
+    z_ticks = [10, 8, 6, 5, 4, 3, 2.5, 2]
+    t_ticks = [cosmic_time_gyr(z) for z in z_ticks]
+    xlim = ax.get_xlim()
+    z_ticks_f = [z for z, t in zip(z_ticks, t_ticks) if xlim[0] <= t <= xlim[1]]
+    t_ticks_f = [t for t in t_ticks if xlim[0] <= t <= xlim[1]]
+    ax_top.set_xlim(xlim)
+    ax_top.set_xticks(t_ticks_f)
+    ax_top.set_xticklabels([str(z) for z in z_ticks_f])
+    ax_top.set_xlabel('Redshift')
+
+    # Custom legend patches
+    import matplotlib.patches as mpatches
+    legend_handles = [
+        mpatches.Patch(color='firebrick',   label='FFB regime (FFBRegime=1)'),
+        mpatches.Patch(color='steelblue',  label='Non-FFB regime (FFBRegime=0)'),
+        plt.Line2D([0], [0], color='goldenrod', ls='--', lw=1.5,
+                   label='FFB → non-FFB transition'),
+    ]
+    ax.legend(handles=legend_handles, loc='lower right', fontsize=8,
+              framealpha=0.9)
+
+    fig.tight_layout()
+    save_figure(fig, os.path.join(OUTPUT_DIR, 'SFH_FFB_regime_history' + OUTPUT_FORMAT))
+
+
+# ========================== PLOT 12c: FFB REGIME HEATMAP (large sample) ==========================
+
+def plot_12c_ffb_regime_heatmap(snapdata):
+    """
+    Heatmap of FFBRegime over time for a random sample of 100 FFB and 100
+    non-FFB central galaxies selected at z~10.
+
+    Rows = galaxies (FFB on top, non-FFB below, separated by a gap).
+    Columns = snapshots ordered by cosmic time.
+    Colour = red (FFBRegime=1) / blue (FFBRegime=0) / grey (galaxy not present).
+
+    FFB galaxies are sorted by their last-FFB snapshot so any transition
+    front shows as a diagonal edge.  Oscillations appear as isolated red/blue
+    specks against the dominant colour.
+
+    Console output summarises oscillation counts for both groups.
+    """
+    print('Plot 12c: FFB regime heatmap (100+100 sample)')
+
+    snap = SNAP_Z10
+    if snap not in snapdata:
+        print('  Snapshot not available. Skipping.')
+        return
+
+    d = snapdata[snap]
+
+    w_ffb = np.where(
+        (d['StellarMass'] > 0) & (d['FFBRegime'] == 1) & (d['Type'] == 0)
+    )[0]
+    w_normal = np.where(
+        (d['StellarMass'] > 0) & (d['FFBRegime'] == 0) & (d['Type'] == 0)
+    )[0]
+
+    if len(w_ffb) == 0:
+        print('  No FFB galaxies found at z~10. Skipping.')
+        return
+
+    N_sample = 100
+    rng = np.random.default_rng(seed=42)
+
+    # Random sample (or all if fewer than N_sample)
+    ffb_sample_idx  = rng.choice(w_ffb,   size=min(N_sample, len(w_ffb)),   replace=False)
+    norm_sample_idx = rng.choice(w_normal, size=min(N_sample, len(w_normal)), replace=False)
+
+    ffb_gal_ids  = d['GalaxyIndex'][ffb_sample_idx].astype(int)
+    norm_gal_ids = d['GalaxyIndex'][norm_sample_idx].astype(int)
+    all_gal_ids  = list(ffb_gal_ids) + list(norm_gal_ids)
+
+    fig_g_snaps   = [s for s in range(8, 64) if s in snapdata]
+    cosmic_times  = {s: cosmic_time_gyr(REDSHIFTS[s]) for s in fig_g_snaps}
+    snap_times    = [cosmic_times[s] for s in fig_g_snaps]
+    snap_redshifts = [REDSHIFTS[s] for s in fig_g_snaps]
+
+    # Build regime matrix: shape (n_gal, n_snap), NaN = not present
+    n_gal  = len(all_gal_ids)
+    n_snap = len(fig_g_snaps)
+    regime_matrix = np.full((n_gal, n_snap), np.nan)
+
+    for j, s in enumerate(fig_g_snaps):
+        sd   = snapdata[s]
+        gids = sd['GalaxyIndex']
+        for i, gid in enumerate(all_gal_ids):
+            match = np.where(gids == gid)[0]
+            if len(match) > 0:
+                regime_matrix[i, j] = sd['FFBRegime'][match[0]]
+
+    # ---- Oscillation check ----
+    def count_transitions(row):
+        present = ~np.isnan(row)
+        vals = row[present].astype(int)
+        return int(np.sum(np.diff(vals) != 0))
+
+    print('  --- Oscillation summary ---')
+    for label, indices in [('FFB', range(len(ffb_gal_ids))),
+                           ('non-FFB', range(len(ffb_gal_ids),
+                                             len(ffb_gal_ids) + len(norm_gal_ids)))]:
+        n_trans = [count_transitions(regime_matrix[i]) for i in indices]
+        n_osc   = sum(1 for n in n_trans if n > 1)
+        n_clean = sum(1 for n in n_trans if n == 1)
+        n_stable = sum(1 for n in n_trans if n == 0)
+        print(f'  {label} ({len(list(indices))} galaxies):')
+        print(f'    No transitions (stable):  {n_stable}')
+        print(f'    Single clean transition:   {n_clean}')
+        print(f'    Oscillating (>1 transition): {n_osc}')
+        if n_osc > 0:
+            osc_counts = sorted([n for n in n_trans if n > 1], reverse=True)
+            print(f'    Transition counts: {osc_counts}')
+
+    # ---- Sort FFB rows by last-FFB snapshot for a clean transition front ----
+    def last_ffb_snap_idx(row):
+        ffb_cols = np.where(row == 1)[0]
+        return int(ffb_cols.max()) if len(ffb_cols) > 0 else -1
+
+    ffb_sort_order  = sorted(range(len(ffb_gal_ids)),
+                             key=lambda i: last_ffb_snap_idx(regime_matrix[i]))
+    norm_sort_order = sorted(range(len(norm_gal_ids)),
+                             key=lambda i: last_ffb_snap_idx(
+                                 regime_matrix[len(ffb_gal_ids) + i]))
+
+    sorted_ffb_rows  = regime_matrix[ffb_sort_order]
+    sorted_norm_rows = regime_matrix[[len(ffb_gal_ids) + i for i in norm_sort_order]]
+
+    # Gap row of NaNs between the two groups
+    gap_rows = np.full((3, n_snap), np.nan)
+    plot_matrix = np.vstack([sorted_ffb_rows, gap_rows, sorted_norm_rows])
+
+    # ---- Build custom colormap ----
+    import matplotlib.colors as mcolors
+    cmap = mcolors.ListedColormap(['steelblue', 'firebrick'])
+    cmap.set_bad(color='lightgrey')   # NaN = not present / gap
+    norm_cmap = mcolors.BoundaryNorm([0, 0.5, 1.0], cmap.N)
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    im = ax.imshow(plot_matrix, aspect='auto', cmap=cmap, norm=norm_cmap,
+                   interpolation='nearest',
+                   extent=[snap_times[0], snap_times[-1],
+                           plot_matrix.shape[0], 0])
+
+    # Horizontal separator between FFB and non-FFB groups
+    sep_y = len(ffb_gal_ids) + len(gap_rows) / 2
+    ax.axhline(sep_y, color='black', lw=1.0, ls='-')
+
+    # Y-axis labels
+    ax.set_ylabel('Galaxy index (sorted)')
+    n_ffb_shown  = len(ffb_gal_ids)
+    n_norm_shown = len(norm_gal_ids)
+    mid_ffb  = n_ffb_shown / 2
+    mid_norm = n_ffb_shown + len(gap_rows) + n_norm_shown / 2
+    ax.set_yticks([mid_ffb, mid_norm])
+    ax.set_yticklabels([f'FFB at z~10\n(n={n_ffb_shown})',
+                        f'non-FFB at z~10\n(n={n_norm_shown})'])
+
+    ax.set_xlabel('Cosmic time [Gyr]')
+    ax.set_xlim(snap_times[0], snap_times[-1])
+
+    # Top axis: redshift
+    ax_top = ax.twiny()
+    z_ticks = [10, 8, 6, 5, 4, 3, 2.5, 2]
+    t_ticks = [cosmic_time_gyr(z) for z in z_ticks]
+    xlim = (snap_times[0], snap_times[-1])
+    z_ticks_f = [z for z, t in zip(z_ticks, t_ticks) if xlim[0] <= t <= xlim[1]]
+    t_ticks_f = [t for t in t_ticks if xlim[0] <= t <= xlim[1]]
+    ax_top.set_xlim(xlim)
+    ax_top.set_xticks(t_ticks_f)
+    ax_top.set_xticklabels([str(z) for z in z_ticks_f])
+    ax_top.set_xlabel('Redshift')
+
+    # Legend
+    import matplotlib.patches as mpatches
+    legend_handles = [
+        mpatches.Patch(color='firebrick',  label='FFB regime'),
+        mpatches.Patch(color='steelblue', label='Non-FFB regime'),
+        mpatches.Patch(color='lightgrey',  label='Not present / gap'),
+    ]
+    ax.legend(handles=legend_handles, loc='lower right', fontsize=9,
+              framealpha=0.9)
+
+    fig.tight_layout()
+    save_figure(fig, os.path.join(OUTPUT_DIR,
+                'SFH_FFB_regime_heatmap' + OUTPUT_FORMAT))
+
+
+# ========================== PLOT 12d: SFH FFB WITH TRANSITION MARKERS ==========================
+
+def plot_12d_sfh_ffb_transitions(snapdata):
+    """
+    Like plot_12_sfh_ffb but additionally:
+      - Tracks FFBRegime at every snapshot for each plotted galaxy.
+      - For FFB galaxies (red): marks the last snapshot where FFBRegime==1
+        with a vertical dashed line and annotates the transition redshift.
+        Prints a warning if FFBRegime is not continuously 1 up to that point.
+      - For non-FFB galaxies (blue): verifies FFBRegime==0 throughout and
+        prints a warning for any snapshot where it is 1.
+    """
+    print('Plot 12d: SFH of FFB galaxies with transition redshift markers')
+
+    snap = SNAP_Z10
+    if snap not in snapdata:
+        print('  Snapshot not available. Skipping.')
+        return
+
+    d = snapdata[snap]
+
+    w_ffb = np.where(
+        (d['StellarMass'] > 0) & (d['FFBRegime'] == 1) & (d['Type'] == 0)
+    )[0]
+    w_normal = np.where(
+        (d['StellarMass'] > 0) & (d['FFBRegime'] == 0) & (d['Type'] == 0)
+    )[0]
+
+    if len(w_ffb) == 0:
+        print('  No FFB galaxies found at z~10. Skipping.')
+        return
+
+    # Top N FFB galaxies by stellar mass
+    N_track = min(10, len(w_ffb))
+    mass_order = np.argsort(d['StellarMass'][w_ffb])[::-1]
+    ffb_idx = w_ffb[mass_order[:N_track]]
+    ffb_gal_ids = d['GalaxyIndex'][ffb_idx]
+
+    # Build never-FFB pool for mass-matched comparison
+    fig_g_snaps = [s for s in range(8, 64) if s in snapdata]
+    ever_ffb_gids = set()
+    for s in fig_g_snaps:
+        sd = snapdata[s]
+        w_ffb_snap = np.where(sd['FFBRegime'] == 1)[0]
+        ever_ffb_gids.update(sd['GalaxyIndex'][w_ffb_snap].astype(int))
+
+    never_ffb_mask = np.array([int(d['GalaxyIndex'][i]) not in ever_ffb_gids
+                               for i in w_normal])
+    w_never_ffb = w_normal[never_ffb_mask]
+
+    norm_gal_ids = np.array([], dtype=np.int64)
+    if len(w_never_ffb) > 0:
+        norm_masses = d['StellarMass'][w_never_ffb]
+        matched_norm_idx = []
+        used = set()
+        for fi in ffb_idx:
+            ffb_mass = d['StellarMass'][fi]
+            diffs = np.abs(norm_masses - ffb_mass)
+            for j in np.argsort(diffs):
+                if j not in used:
+                    matched_norm_idx.append(w_never_ffb[j])
+                    used.add(j)
+                    break
+        if matched_norm_idx:
+            norm_gal_ids = d['GalaxyIndex'][np.array(matched_norm_idx)]
+
+    cosmic_times = {s: cosmic_time_gyr(REDSHIFTS[s]) for s in fig_g_snaps}
+
+    # Track SFR and FFBRegime per galaxy
+    ffb_tracks  = {int(gid): {'t': [], 'sfr': [], 'regime': [], 'snap': []}
+                   for gid in ffb_gal_ids}
+    norm_tracks = {int(gid): {'t': [], 'sfr': [], 'regime': [], 'snap': []}
+                   for gid in norm_gal_ids}
+
+    for s in fig_g_snaps:
+        sd   = snapdata[s]
+        gids = sd['GalaxyIndex']
+        sfr_total = sd['SfrDisk'] + sd['SfrBulge']
+        t = cosmic_times[s]
+
+        for gid in ffb_gal_ids:
+            match = np.where(gids == gid)[0]
+            if len(match) > 0:
+                m = match[0]
+                ffb_tracks[int(gid)]['t'].append(t)
+                ffb_tracks[int(gid)]['sfr'].append(sfr_total[m])
+                ffb_tracks[int(gid)]['regime'].append(int(sd['FFBRegime'][m]))
+                ffb_tracks[int(gid)]['snap'].append(s)
+
+        for gid in norm_gal_ids:
+            match = np.where(gids == gid)[0]
+            if len(match) > 0:
+                m = match[0]
+                norm_tracks[int(gid)]['t'].append(t)
+                norm_tracks[int(gid)]['sfr'].append(sfr_total[m])
+                norm_tracks[int(gid)]['regime'].append(int(sd['FFBRegime'][m]))
+                norm_tracks[int(gid)]['snap'].append(s)
+
+    # ---- Diagnostics ----
+    print('  --- FFB galaxy transition analysis ---')
+    ffb_transition = {}   # gid -> (t_first_nonffb_after_ffb, z_at_transition)
+    for gid in ffb_gal_ids.astype(int):
+        tr = ffb_tracks[gid]
+        if not tr['t']:
+            continue
+        pairs = sorted(zip(tr['t'], tr['regime'], tr['snap']))
+        t_vals, r_vals, s_vals = zip(*pairs)
+
+        ffb_indices = [k for k, r in enumerate(r_vals) if r == 1]
+        if not ffb_indices:
+            print(f'    GalaxyIndex {gid}: no FFB snaps in tracked range')
+            continue
+
+        transition_idx = None
+        for k in range(len(r_vals) - 1):
+            if r_vals[k] == 1 and r_vals[k + 1] == 0:
+                transition_idx = k + 1
+                break
+
+        if transition_idx is None:
+            print(f'    GalaxyIndex {gid}: no FFB→non-FFB transition in tracked range')
+            continue
+
+        t_trans = t_vals[transition_idx]
+        z_trans = REDSHIFTS[s_vals[transition_idx]]
+        ffb_transition[gid] = (t_trans, z_trans)
+        print(f'    GalaxyIndex {gid}: first non-FFB after FFB at z={z_trans:.2f} '
+              f'(t={t_trans:.3f} Gyr)')
+
+        # Clean-transition check: any non-FFB point before the first 1->0 crossing?
+        for k in range(transition_idx):
+            if r_vals[k] == 0:
+                print(f'      WARNING: FFBRegime=0 at z={REDSHIFTS[s_vals[k]]:.2f} '
+                      f'(snap {s_vals[k]}) before first 1→0 crossing — not a clean transition')
+
+    print('  --- Non-FFB galaxy verification ---')
+    for gid in norm_gal_ids.astype(int):
+        tr = norm_tracks[gid]
+        violations = [(t, s) for t, r, s in zip(tr['t'], tr['regime'], tr['snap'])
+                      if r == 1]
+        if violations:
+            for t_v, s_v in violations:
+                print(f'    WARNING: GalaxyIndex {gid} has FFBRegime=1 at '
+                      f'z={REDSHIFTS[s_v]:.2f} (snap {s_v})')
+        else:
+            print(f'    GalaxyIndex {gid}: confirmed never-FFB throughout')
+
+    # ---- Plot ----
+    fig, ax = plt.subplots()
+
+    ffb_regime_label = False
+    nonffb_regime_label = False
+
+    all_plot_ids = list(ffb_gal_ids.astype(int)) + list(norm_gal_ids.astype(int))
+    for gid in all_plot_ids:
+        tr = ffb_tracks.get(gid, norm_tracks.get(gid, None))
+        if tr is None or len(tr['t']) <= 1:
+            continue
+
+        pairs = sorted(zip(tr['t'], tr['sfr'], tr['regime'], tr['snap']),
+                       key=lambda x: x[0])
+
+        for k in range(len(pairs) - 1):
+            t0, sfr0, r0, s0 = pairs[k]
+            t1, sfr1, r1, s1 = pairs[k + 1]
+
+            color = 'firebrick' if r0 == 1 else 'steelblue'
+            ls = '-' if r0 == 1 else '--'
+            lbl = None
+            if r0 == 1 and not ffb_regime_label:
+                lbl = 'FFB regime'
+                ffb_regime_label = True
+            elif r0 == 0 and not nonffb_regime_label:
+                lbl = 'Non-FFB regime'
+                nonffb_regime_label = True
+
+            ax.plot([t0, t1], [sfr0, sfr1], ls, color=color,
+                    alpha=1.0, lw=2.2, label=lbl, zorder=2)
+
+    ax.set_xlabel('Cosmic time [Gyr]')
+    ax.set_ylabel(r'SFR [$M_{\odot}\,\mathrm{yr}^{-1}$]')
+
+    # x-axis fixed to requested range: min snapshot time to 1.0 Gyr
+    t_min = min(cosmic_times[s] for s in fig_g_snaps)
+    t_max = 1.0
+    print(f'  t_min = {t_min:.2f} Gyr, t_max = {t_max:.2f} Gyr')
+    print(f'  Transition times: ' +
+          ', '.join(f'z={_z:.1f} (t={t:.2f} Gyr)'
+                    for t, _z in sorted(ffb_transition.values())))
+    ax.set_xlim(t_min, t_max)
+
+    # Mark FFB -> non-FFB transitions
+    for gid in ffb_gal_ids.astype(int):
+        if gid in ffb_transition:
+            t_trans, z_trans = ffb_transition[gid]
+            if not (t_min <= t_trans <= t_max):
+                continue
+            ax.axvline(t_trans, color='goldenrod', ls='--', lw=1.2,
+                       alpha=0.85, zorder=4)
+            # ax.annotate(fr'$z={z_trans:.1f}$',
+            #             xy=(t_trans, ax.get_ylim()[0]),
+            #             xytext=(3, 6), textcoords='offset points',
+            #             fontsize=7, color='goldenrod', va='bottom',
+            #             rotation=90)
+
+    # Top axis: redshift
+    ax_top = ax.twiny()
+    z_ticks = [10, 8, 6, 5, 4, 3, 2.5, 2, 1.5, 1]
+    t_ticks = [cosmic_time_gyr(z) for z in z_ticks]
+    xlim = ax.get_xlim()
+    z_ticks_f = [z for z, t in zip(z_ticks, t_ticks) if xlim[0] <= t <= xlim[1]]
+    t_ticks_f = [t for t in t_ticks if xlim[0] <= t <= xlim[1]]
+    ax_top.set_xlim(xlim)
+    ax_top.set_xticks(t_ticks_f)
+    ax_top.set_xticklabels([str(z) for z in z_ticks_f])
+    ax_top.set_xlabel('Redshift')
+
+    # Add transition marker to legend
+    import matplotlib.lines as mlines
+    trans_handle = mlines.Line2D([], [], color='goldenrod', ls='--', lw=1.5,
+                                 label='FFB → non-FFB transition')
+    handles, labels = ax.get_legend_handles_labels()
+    _standard_legend(ax, loc='upper left',
+                     handles=handles + [trans_handle],
+                     labels=labels + ['FFB → non-FFB transition'])
+
+    fig.tight_layout()
+    save_figure(fig, os.path.join(OUTPUT_DIR,
+                'SFH_FFB_transitions' + OUTPUT_FORMAT))
 
 
 # ========================== PLOT 13: FFB FRACTION vs HALO MASS ==========================
@@ -3551,18 +4328,18 @@ def plot_14_density_evolution():
                                 sfrd_noffb_hi_sorted[boot_valid], color='firebrick', alpha=0.2)
     if np.sum(valid_ffb) > 1:
         axes[0].plot(z_sorted[valid_ffb], sfrd_ffb_sorted[valid_ffb], '-',
-                    color='black', linewidth=3.5, label=r'$\epsilon_{\rm max}=0.2$')
+                    color='black', linewidth=3.5, label=r'$\alpha_{\rm FFB}=0.2$')
         boot_valid = valid_ffb & ~np.isnan(sfrd_ffb_lo_sorted) & ~np.isnan(sfrd_ffb_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[0].fill_between(z_sorted[boot_valid], sfrd_ffb_lo_sorted[boot_valid],
                                 sfrd_ffb_hi_sorted[boot_valid], color='black', alpha=0.2)
     if np.sum(valid_ffb100) > 1:
         axes[0].plot(z_sorted[valid_ffb100], sfrd_ffb100_sorted[valid_ffb100], '-',
-                    color='dodgerblue', linewidth=3.0, label=r'$\epsilon_{\rm max}=1.0$')
+                    color='steelblue', linewidth=3.0, label=r'$\alpha_{\rm FFB}=1.0$')
         boot_valid = valid_ffb100 & ~np.isnan(sfrd_ffb100_lo_sorted) & ~np.isnan(sfrd_ffb100_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[0].fill_between(z_sorted[boot_valid], sfrd_ffb100_lo_sorted[boot_valid],
-                                sfrd_ffb100_hi_sorted[boot_valid], color='dodgerblue', alpha=0.2)
+                                sfrd_ffb100_hi_sorted[boot_valid], color='steelblue', alpha=0.2)
     if len(mu_z_list) > 1:
         valid_mu = ~np.isnan(mu_sfrd_sorted)
         if np.sum(valid_mu) > 1:
@@ -3627,18 +4404,18 @@ def plot_14_density_evolution():
                                 smd_noffb_hi_sorted[boot_valid], color='firebrick', alpha=0.2)
     if np.sum(valid_smd_ffb) > 1:
         axes[1].plot(z_sorted[valid_smd_ffb], smd_ffb_sorted[valid_smd_ffb], '-',
-                    color='black', linewidth=3.5, label=r'$\epsilon_{\rm max}=0.2$')
+                    color='black', linewidth=3.5, label=r'$\alpha_{\rm FFB}=0.2$')
         boot_valid = valid_smd_ffb & ~np.isnan(smd_ffb_lo_sorted) & ~np.isnan(smd_ffb_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[1].fill_between(z_sorted[boot_valid], smd_ffb_lo_sorted[boot_valid],
                                 smd_ffb_hi_sorted[boot_valid], color='black', alpha=0.2)
     if np.sum(valid_smd_ffb100) > 1:
         axes[1].plot(z_sorted[valid_smd_ffb100], smd_ffb100_sorted[valid_smd_ffb100], '-',
-                    color='dodgerblue', linewidth=3.0, label=r'$\epsilon_{\rm max}=1.0$')
+                    color='steelblue', linewidth=3.0, label=r'$\alpha_{\rm FFB}=1.0$')
         boot_valid = valid_smd_ffb100 & ~np.isnan(smd_ffb100_lo_sorted) & ~np.isnan(smd_ffb100_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[1].fill_between(z_sorted[boot_valid], smd_ffb100_lo_sorted[boot_valid],
-                                smd_ffb100_hi_sorted[boot_valid], color='dodgerblue', alpha=0.2)
+                                smd_ffb100_hi_sorted[boot_valid], color='steelblue', alpha=0.2)
     if len(mu_z_list) > 1:
         valid_mu_smd = ~np.isnan(mu_smd_sorted)
         if np.sum(valid_mu_smd) > 1:
@@ -3932,25 +4709,25 @@ def plot_14c_density_evolution_mbk25():
                                 sfrd_noffb_hi_sorted[boot_valid], color='firebrick', alpha=0.2)
     if np.sum(valid_ffb) > 1:
         axes[0].plot(z_sorted[valid_ffb], sfrd_ffb_sorted[valid_ffb], '-',
-                    color='black', linewidth=3.5, label=r'$\epsilon_{\rm max}=0.2$ (Li+24)')
+                    color='black', linewidth=3.5, label=r'$\alpha_{\rm FFB}=0.2$ (Li+24)')
         boot_valid = valid_ffb & ~np.isnan(sfrd_ffb_lo_sorted) & ~np.isnan(sfrd_ffb_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[0].fill_between(z_sorted[boot_valid], sfrd_ffb_lo_sorted[boot_valid],
                                 sfrd_ffb_hi_sorted[boot_valid], color='black', alpha=0.2)
     if np.sum(valid_ffb_bk25) > 1:
         axes[0].plot(z_sorted[valid_ffb_bk25], sfrd_ffb_bk25_sorted[valid_ffb_bk25], '-',
-                    color='green', linewidth=3.0, label=r'$\epsilon_{\rm max}=0.2$ (MBK25)')
+                    color='green', linewidth=3.0, label=r'$\alpha_{\rm FFB}=0.2$ (MBK25)')
         boot_valid = valid_ffb_bk25 & ~np.isnan(sfrd_ffb_bk25_lo_sorted) & ~np.isnan(sfrd_ffb_bk25_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[0].fill_between(z_sorted[boot_valid], sfrd_ffb_bk25_lo_sorted[boot_valid],
                                 sfrd_ffb_bk25_hi_sorted[boot_valid], color='green', alpha=0.2)
     if np.sum(valid_ffb100) > 1:
         axes[0].plot(z_sorted[valid_ffb100], sfrd_ffb100_sorted[valid_ffb100], '-',
-                    color='dodgerblue', linewidth=3.0, label=r'$\epsilon_{\rm max}=1.0$ (Li+24)')
+                    color='steelblue', linewidth=3.0, label=r'$\alpha_{\rm FFB}=1.0$ (Li+24)')
         boot_valid = valid_ffb100 & ~np.isnan(sfrd_ffb100_lo_sorted) & ~np.isnan(sfrd_ffb100_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[0].fill_between(z_sorted[boot_valid], sfrd_ffb100_lo_sorted[boot_valid],
-                                sfrd_ffb100_hi_sorted[boot_valid], color='dodgerblue', alpha=0.2)
+                                sfrd_ffb100_hi_sorted[boot_valid], color='steelblue', alpha=0.2)
     if len(mu_z_list) > 1:
         valid_mu = ~np.isnan(mu_sfrd_sorted)
         if np.sum(valid_mu) > 1:
@@ -4016,25 +4793,25 @@ def plot_14c_density_evolution_mbk25():
                                 smd_noffb_hi_sorted[boot_valid], color='firebrick', alpha=0.2)
     if np.sum(valid_smd_ffb) > 1:
         axes[1].plot(z_sorted[valid_smd_ffb], smd_ffb_sorted[valid_smd_ffb], '-',
-                    color='black', linewidth=3.5, label=r'$\epsilon_{\rm max}=0.2$ (Li+24)')
+                    color='black', linewidth=3.5, label=r'$\alpha_{\rm FFB}=0.2$ (Li+24)')
         boot_valid = valid_smd_ffb & ~np.isnan(smd_ffb_lo_sorted) & ~np.isnan(smd_ffb_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[1].fill_between(z_sorted[boot_valid], smd_ffb_lo_sorted[boot_valid],
                                 smd_ffb_hi_sorted[boot_valid], color='black', alpha=0.2)
     if np.sum(valid_smd_bk25) > 1:
         axes[1].plot(z_sorted[valid_smd_bk25], smd_ffb_bk25_sorted[valid_smd_bk25], '-',
-                    color='green', linewidth=3.0, label=r'$\epsilon_{\rm max}=0.2$ (MBK25)')
+                    color='green', linewidth=3.0, label=r'$\alpha_{\rm FFB}=0.2$ (MBK25)')
         boot_valid = valid_smd_bk25 & ~np.isnan(smd_ffb_bk25_lo_sorted) & ~np.isnan(smd_ffb_bk25_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[1].fill_between(z_sorted[boot_valid], smd_ffb_bk25_lo_sorted[boot_valid],
                                 smd_ffb_bk25_hi_sorted[boot_valid], color='green', alpha=0.2)
     if np.sum(valid_smd_ffb100) > 1:
         axes[1].plot(z_sorted[valid_smd_ffb100], smd_ffb100_sorted[valid_smd_ffb100], '-',
-                    color='dodgerblue', linewidth=3.0, label=r'$\epsilon_{\rm max}=1.0$ (Li+24)')
+                    color='steelblue', linewidth=3.0, label=r'$\alpha_{\rm FFB}=1.0$ (Li+24)')
         boot_valid = valid_smd_ffb100 & ~np.isnan(smd_ffb100_lo_sorted) & ~np.isnan(smd_ffb100_hi_sorted)
         if np.sum(boot_valid) > 1:
             axes[1].fill_between(z_sorted[boot_valid], smd_ffb100_lo_sorted[boot_valid],
-                                smd_ffb100_hi_sorted[boot_valid], color='dodgerblue', alpha=0.2)
+                                smd_ffb100_hi_sorted[boot_valid], color='steelblue', alpha=0.2)
     if len(mu_z_list) > 1:
         valid_mu_smd = ~np.isnan(mu_smd_sorted)
         if np.sum(valid_mu_smd) > 1:
@@ -4140,36 +4917,36 @@ def plot_14b_density_evolution_methods():
     print("Loading data for FFB method comparison plots...")
 
     # Define the 4 models
-    model_keys = ['li_sigmoid', 'bk25_smooth', 'li_nosig', 'bk25_sharp']
+    model_keys = ['li_sigmoid', 'MBK25_smooth', 'li_nosig', 'MBK25_sharp']
     model_dirs = {
         'li_sigmoid':  PRIMARY_DIR,
-        'bk25_smooth': FFB_BK25_SMOOTH_DIR,
+        'MBK25_smooth': FFB_BK25_SMOOTH_DIR,
         'li_nosig':    FFB_NOSIGMOID_DIR,
-        'bk25_sharp':  FFB_BK25_DIR,
+        'MBK25_sharp':  FFB_BK25_DIR,
     }
     model_labels = {
         'li_sigmoid':  r'Li+24 (sigmoid)',
-        'bk25_smooth': r'BK25 (log-normal $c$ scatter)',
+        'MBK25_smooth': r'MBK25 (log-normal $c$ scatter)',
         'li_nosig':    r'Li+24 (sharp cutoff)',
-        'bk25_sharp':  r'BK25 (sharp cutoff)',
+        'MBK25_sharp':  r'MBK25 (sharp cutoff)',
     }
     model_colors = {
         'li_sigmoid':  'black',
-        'bk25_smooth': 'dodgerblue',
+        'MBK25_smooth': 'steelblue',
         'li_nosig':    'firebrick',
-        'bk25_sharp':  'darkgreen',
+        'MBK25_sharp':  'darkgreen',
     }
     model_ls = {
         'li_sigmoid':  '-',
-        'bk25_smooth': '-',
+        'MBK25_smooth': '-',
         'li_nosig':    '--',
-        'bk25_sharp':  '--',
+        'MBK25_sharp':  '--',
     }
     model_lw = {
         'li_sigmoid':  3.5,
-        'bk25_smooth': 3.0,
+        'MBK25_smooth': 3.0,
         'li_nosig':    3.0,
-        'bk25_sharp':  3.0,
+        'MBK25_sharp':  3.0,
     }
 
     # Storage for each model
@@ -4338,7 +5115,7 @@ def plot_14b_density_evolution_methods():
 
     # Configure axes and split legends
     def is_sim_label(l):
-        return any(x in l for x in ['Li+24', 'BK25', 'epsilon'])
+        return any(x in l for x in ['Li+24', 'MBK25', 'epsilon'])
     for panel in axes:
         handles, labels = panel.get_legend_handles_labels()
         sim_h = [h for h, l in zip(handles, labels) if is_sim_label(l)]
@@ -4390,20 +5167,17 @@ def plot_15_sfr_vs_stellar_mass(primary, vanilla):
     log_mass = np.log10(primary['StellarMass'][w])
     log_sfr = np.log10(sfr[w])
 
-    X, Y, Z = density_contour(log_mass, log_sfr,
-                               bins=[np.linspace(8.0, 12.0, 101),
-                                     np.linspace(-4.0, 2.0, 101)])
-
     # --- Plot ---
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    if Z.max() > 0:
-        levels = sigma_contour_levels(Z)
-        if levels is not None:
-            ax.contourf(X, Y, Z, levels=levels, cmap='Blues_r', alpha=0.6, zorder=8)
-            ax.contour(X, Y, Z, levels=levels, colors='steelblue',
-                       linestyles='-', alpha=1.0, linewidths=1.0)
+    mass_bins = np.arange(8.0, 12.0 + 0.1, 0.1)
+    plot_binned_median_1sigma(
+        ax, log_mass, log_sfr, mass_bins,
+        color='steelblue', label='SAGE26',
+        alpha=0.25, lw=3.5, min_count=50,
+        zorder_fill=2, zorder_line=3,
+    )
 
     # --- C16 (Vanilla) model ---
     sfr_v = vanilla['SfrDisk'] + vanilla['SfrBulge']
@@ -4411,18 +5185,18 @@ def plot_15_sfr_vs_stellar_mass(primary, vanilla):
     if np.any(w_v):
         log_mass_v = np.log10(vanilla['StellarMass'][w_v])
         log_sfr_v = np.log10(sfr_v[w_v])
-        if DILUTE and len(log_mass_v) > DILUTE:
-            idx_v = sample(range(len(log_mass_v)), DILUTE)
-            log_mass_v = log_mass_v[idx_v]
-            log_sfr_v = log_sfr_v[idx_v]
-        ax.scatter(log_mass_v, log_sfr_v, marker='x', s=50, c='purple', zorder=9,
-                   alpha=0.1, label='C16', rasterized=True)
+        plot_binned_median_1sigma(
+            ax, log_mass_v, log_sfr_v, mass_bins,
+            color='purple', label='SAGE16', ls='--',
+            alpha=0.20, lw=3.0, min_count=50,
+            zorder_fill=4, zorder_line=5,
+        )
         
     # --- Load Brinchmann et al. (2004) data ---
     bz04_mass, bz04_sfr = load_brinchmann_sfr_mass_2004_data()
     if bz04_mass is not None and bz04_sfr is not None:
         ax.scatter(bz04_mass, bz04_sfr, marker='d', alpha=0.6, zorder=10,
-                facecolors='lightgray', edgecolors='black', s=50,
+                facecolors='gray', edgecolors='black', s=50,
                 label='Brinchmann+04')
         
     # --- Load Terrazas et al. (2017) data ---
@@ -4430,7 +5204,7 @@ def plot_15_sfr_vs_stellar_mass(primary, vanilla):
     if ter_mass is not None and ter_sfr is not None:
         # Plot with error bars
         ax.errorbar(ter_mass, ter_sfr, xerr=0.2, yerr=0.3, fmt='o', ecolor='black', alpha=0.6, zorder=10,
-                   mfc='lightgray', mec='black', ms=8, mew=1.0, elinewidth=1.0, label='Terrazas+17')
+                   mfc='gray', mec='black', ms=8, mew=1.0, elinewidth=1.0, label='Terrazas+17')
         
      # --- Load and plot GAMA ProSpect Claudia data ---
         log_ms, log_sfr = load_gama_prospect_claudia()
@@ -4448,7 +5222,7 @@ def plot_15_sfr_vs_stellar_mass(primary, vanilla):
             valid = ~np.isnan(med)
             ax.errorbar(centers[valid], med[valid], yerr=[med[valid] - p25[valid], p75[valid] - med[valid]],
                         fmt='s', color='black', label='Bellstedt+20', markersize=8, alpha=0.6, zorder=10,
-                        markeredgewidth=0.8, markerfacecolor='lightgray',
+                        markeredgewidth=0.8, markerfacecolor='gray',
                         markeredgecolor='black')
         
 
@@ -4461,20 +5235,15 @@ def plot_15_sfr_vs_stellar_mass(primary, vanilla):
     ax.set_xlabel(r'$\log_{10}\ m_{\mathrm{*}}\ [M_{\odot}]$')
     ax.set_ylabel(r'$\log_{10}\ \mathrm{SFR}\ [M_{\odot}\,\mathrm{yr}^{-1}]$')
 
-    from matplotlib.patches import Patch
-    sim_handles = [Patch(facecolor='steelblue', alpha=0.6, label='SAGE26')]
-    sim_labels = ['SAGE26']
-    obs_handles, obs_labels = [], []
-    for h, l in zip(*ax.get_legend_handles_labels()):
-        if l == 'C16':
-            sim_handles.append(h)
-            sim_labels.append(l)
-        else:
-            obs_handles.append(h)
-            obs_labels.append(l)
-    leg1 = _standard_legend(ax, loc='lower right', handles=sim_handles, labels=sim_labels)
+    handles, labels = ax.get_legend_handles_labels()
+    sim_set = {'SAGE26', 'SAGE16'}
+    sim_h = [h for h, l in zip(handles, labels) if l in sim_set]
+    sim_l = [l for l in labels if l in sim_set]
+    obs_h = [h for h, l in zip(handles, labels) if l not in sim_set]
+    obs_l = [l for l in labels if l not in sim_set]
+    leg1 = _standard_legend(ax, loc='lower left', handles=sim_h, labels=sim_l)
     ax.add_artist(leg1)
-    _standard_legend(ax, loc='upper left', handles=obs_handles, labels=obs_labels)
+    _standard_legend(ax, loc='upper left', handles=obs_h, labels=obs_l)
     fig.tight_layout()
 
     save_figure(fig, os.path.join(OUTPUT_DIR,
@@ -4522,7 +5291,7 @@ def plot_16_sfrd_history():
     # 2. Vanilla Model (C16)
     if os.path.exists(VANILLA_DIR):
         sim_dirs.append({
-            'path': VANILLA_DIR, 'label': 'C16',
+            'path': VANILLA_DIR, 'label': 'SAGE16',
             'color': 'firebrick', 'ls': '--', 'lw': 1.5,
             'redshifts': redshifts, 'first_snap': FirstSnap, 'last_snap': LastSnap,
             'volume': VOLUME,
@@ -4532,7 +5301,7 @@ def plot_16_sfrd_history():
     if os.path.exists(MINIUCHUU_DIR):
         sim_dirs.append({
             'path': MINIUCHUU_DIR, 'label': 'SAGE26 (miniUchuu)',
-            'color': 'dodgerblue', 'ls': '--', 'lw': 3.5,
+            'color': 'steelblue', 'ls': '--', 'lw': 3.5,
             'redshifts': redshifts_mu, 'first_snap': MINIUCHUU_FIRST_SNAP, 'last_snap': MINIUCHUU_LAST_SNAP,
             'volume': MINIUCHUU_VOLUME,
         })
@@ -4660,16 +5429,16 @@ def plot_16_sfrd_history():
                 'sfrd': np.log10(sfr_density[nonzero])
             }
 
-    # ===== QUANTITATIVE COMPARISON: SAGE26 vs C16 =====
-    if 'SAGE26 (Millennium)' in model_results and 'C16' in model_results:
+    # ===== QUANTITATIVE COMPARISON: SAGE26 vs SAGE16 =====
+    if 'SAGE26 (Millennium)' in model_results and 'SAGE16' in model_results:
         print("\n" + "="*60)
-        print("QUANTITATIVE COMPARISON: SAGE26 vs C16 (SFRD)")
+        print("QUANTITATIVE COMPARISON: SAGE26 vs SAGE16 (SFRD)")
         print("="*60)
 
         z_sage = model_results['SAGE26 (Millennium)']['z']
         sfrd_sage = model_results['SAGE26 (Millennium)']['sfrd']
-        z_c16 = model_results['C16']['z']
-        sfrd_c16 = model_results['C16']['sfrd']
+        z_c16 = model_results['SAGE16']['z']
+        sfrd_c16 = model_results['SAGE16']['sfrd']
 
         # Filter to plot range (z <= 7.5)
         z_mask = z_sage <= 7.5
@@ -4687,7 +5456,7 @@ def plot_16_sfrd_history():
         sfrd_diff = sfrd_c16_matched[valid] - sfrd_sage[valid]
 
         print(f"\n  Comparison over z = {z_valid.min():.1f} to {z_valid.max():.1f}")
-        print(f"  Mean difference (C16 - SAGE26):  {np.mean(sfrd_diff):+.3f} dex")
+        print(f"  Mean difference (SAGE16 - SAGE26):  {np.mean(sfrd_diff):+.3f} dex")
         print(f"  Median difference:               {np.median(sfrd_diff):+.3f} dex")
         print(f"  Std of difference:               {np.std(sfrd_diff):.3f} dex")
         print(f"  Max difference at z={z_valid[np.argmax(sfrd_diff)]:.1f}: {np.max(sfrd_diff):+.3f} dex ({10**np.max(sfrd_diff):.1f}x)")
@@ -4700,7 +5469,7 @@ def plot_16_sfrd_history():
                 sage_val = sfrd_sage[valid][idx]
                 c16_val = sfrd_c16_matched[valid][idx]
                 diff = c16_val - sage_val
-                print(f"    z~{z_valid[idx]:.1f}: C16={c16_val:.2f}, SAGE26={sage_val:.2f}, Δ={diff:+.2f} dex ({10**diff:.1f}x)")
+                print(f"    z~{z_valid[idx]:.1f}: SAGE16={c16_val:.2f}, SAGE26={sage_val:.2f}, Δ={diff:+.2f} dex ({10**diff:.1f}x)")
 
         print("="*60 + "\n")
 
@@ -4731,7 +5500,7 @@ def plot_16_sfrd_history():
     ax.set_xlim(0.0, 7.5)
     ax.set_ylim(-3.0, -0.5)
 
-    sim_names = {'SAGE26 (Millennium)', 'SAGE26 (miniUchuu)', 'C16'}
+    sim_names = {'SAGE26 (Millennium)', 'SAGE26 (miniUchuu)', 'SAGE16'}
     handles, labels = ax.get_legend_handles_labels()
     sim_h = [h for h, l in zip(handles, labels) if l in sim_names]
     sim_l = [l for l in labels if l in sim_names]
@@ -4780,13 +5549,13 @@ def plot_17_smd_history():
         })
     if os.path.exists(VANILLA_DIR):
         sim_dirs.append({
-            'path': VANILLA_DIR, 'label': 'C16', 'color': 'firebrick', 'ls': '--', 'lw': 2.0,
+            'path': VANILLA_DIR, 'label': 'SAGE16', 'color': 'firebrick', 'ls': '--', 'lw': 2.0,
             'redshifts': redshifts, 'first_snap': FirstSnap, 'last_snap': LastSnap,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
     if os.path.exists(MINIUCHUU_DIR):
         sim_dirs.append({
-            'path': MINIUCHUU_DIR, 'label': 'SAGE26 (miniUchuu)', 'color': 'dodgerblue', 'ls': '--', 'lw': 3.5,
+            'path': MINIUCHUU_DIR, 'label': 'SAGE26 (miniUchuu)', 'color': 'steelblue', 'ls': '--', 'lw': 3.5,
             'redshifts': redshifts_mu, 'first_snap': MINIUCHUU_FIRST_SNAP, 'last_snap': MINIUCHUU_LAST_SNAP,
             'volume': MINIUCHUU_VOLUME, 'mass_convert': MINIUCHUU_MASS_CONVERT,
         })
@@ -4940,13 +5709,13 @@ def plot_17_smd_history():
 
     fig.tight_layout()
 
-    sim_names = {'SAGE26 (Millennium)', 'SAGE26 (miniUchuu)', 'C16'}
+    sim_names = {'SAGE26 (Millennium)', 'SAGE26 (miniUchuu)', 'SAGE16'}
     handles, labels = ax.get_legend_handles_labels()
     sim_h = [h for h, l in zip(handles, labels) if l in sim_names]
     sim_l = [l for l in labels if l in sim_names]
     obs_h = [h for h, l in zip(handles, labels) if l not in sim_names]
     obs_l = [l for l in labels if l not in sim_names]
-    leg1 = _standard_legend(ax, loc='lower right', handles=sim_h, labels=sim_l)
+    leg1 = _standard_legend(ax, loc='upper right', handles=sim_h, labels=sim_l)
     ax.add_artist(leg1)
     _standard_legend(ax, loc='lower left', handles=obs_h, labels=obs_l)
 
@@ -5390,13 +6159,13 @@ def plot_18_smf_redshift_grid():
     if os.path.exists(MINIUCHUU_DIR):
         models.append({
             'path': MINIUCHUU_DIR, 'label': 'SAGE26 (miniUchuu)',
-            'color': 'dodgerblue', 'ls': '--', 'lw': 2.5,
+            'color': 'steelblue', 'ls': '--', 'lw': 2.5,
             'redshifts': mu_redshifts, 'first_snap': MINIUCHUU_FIRST_SNAP, 'last_snap': MINIUCHUU_LAST_SNAP,
             'volume': MINIUCHUU_VOLUME, 'mass_convert': MINIUCHUU_MASS_CONVERT,
         })
     if os.path.exists(VANILLA_DIR):
         models.append({
-            'path': VANILLA_DIR, 'label': 'C16',
+            'path': VANILLA_DIR, 'label': 'SAGE16',
             'color': 'firebrick', 'ls': '--', 'lw': 2.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
@@ -5558,14 +6327,14 @@ def plot_18b_smf_redshift_grid_wide():
     if os.path.exists(MINIUCHUU_DIR):
         models.append({
             'path': MINIUCHUU_DIR, 'label': 'SAGE26 (miniUchuu)',
-            'color': 'dodgerblue', 'ls': '--', 'lw': 2.5,
+            'color': 'steelblue', 'ls': '--', 'lw': 2.5,
             'redshifts': mu_redshifts, 'first_snap': MINIUCHUU_FIRST_SNAP, 'last_snap': MINIUCHUU_LAST_SNAP,
             'volume': MINIUCHUU_VOLUME, 'mass_convert': MINIUCHUU_MASS_CONVERT,
         })
     if os.path.exists(VANILLA_DIR):
         models.append({
-            'path': VANILLA_DIR, 'label': 'C16',
-            'color': 'firebrick', 'ls': '-', 'lw': 4.5,
+            'path': VANILLA_DIR, 'label': 'SAGE16',
+            'color': 'firebrick', 'ls': '--', 'lw': 4.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
@@ -5721,15 +6490,15 @@ def plot_19_smf_ffb_grid():
         })
     if os.path.exists(PRIMARY_DIR):
         models.append({
-            'path': PRIMARY_DIR, 'label': r'$\epsilon_{\rm max}=0.2$',
+            'path': PRIMARY_DIR, 'label': r'$\alpha_{\rm FFB}=0.2$',
             'color': 'black', 'ls': '-', 'lw': 3.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
     if os.path.exists(FFB100_DIR):
         models.append({
-            'path': FFB100_DIR, 'label': r'$\epsilon_{\rm max}=1.0$',
-            'color': 'dodgerblue', 'ls': '-', 'lw': 3.0,
+            'path': FFB100_DIR, 'label': r'$\alpha_{\rm FFB}=1.0$',
+            'color': 'steelblue', 'ls': '-', 'lw': 3.0,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
@@ -5764,7 +6533,7 @@ def plot_19_smf_ffb_grid():
 
             try:
                 # For FFB 100% model at z >= 7, apply resolution cut based on SMHM relation
-                if model['label'] == r'$\epsilon_{\rm max}=1.0$' and z_mid > 50.0:
+                if model['label'] == r'$\alpha_{\rm FFB}=1.0$' and z_mid > 50.0:
                     data = load_model(model['path'], snapshot=snap_name,
                                       properties=['StellarMass', 'Mvir'])
                     m_stars = data['StellarMass']
@@ -5896,22 +6665,22 @@ def plot_19c_smf_ffb_grid_mbk25():
         })
     if os.path.exists(PRIMARY_DIR):
         models.append({
-            'path': PRIMARY_DIR, 'label': r'$\epsilon_{\rm max}=0.2$ (Li+24)',
+            'path': PRIMARY_DIR, 'label': r'$\alpha_{\rm FFB}=0.2$ (Li+24)',
             'color': 'black', 'ls': '-', 'lw': 3.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
     if os.path.exists(FFB_BK25_SMOOTH_DIR):
         models.append({
-            'path': FFB_BK25_SMOOTH_DIR, 'label': r'$\epsilon_{\rm max}=0.2$ (MBK25)',
+            'path': FFB_BK25_SMOOTH_DIR, 'label': r'$\alpha_{\rm FFB}=0.2$ (MBK25)',
             'color': 'green', 'ls': '-', 'lw': 3.0,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
     if os.path.exists(FFB100_DIR):
         models.append({
-            'path': FFB100_DIR, 'label': r'$\epsilon_{\rm max}=1.0$ (Li+24)',
-            'color': 'dodgerblue', 'ls': '-', 'lw': 3.0,
+            'path': FFB100_DIR, 'label': r'$\alpha_{\rm FFB}=1.0$ (Li+24)',
+            'color': 'steelblue', 'ls': '-', 'lw': 3.0,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
@@ -6046,9 +6815,9 @@ def plot_19b_smf_ffb_methods_grid():
     models = []
     model_defs = [
         (PRIMARY_DIR,         r'Li+24 (sigmoid)',                    'black',      '-',  3.5),
-        (FFB_BK25_SMOOTH_DIR, r'BK25 (log-normal $c$ scatter)',     'dodgerblue', '-',  3.0),
+        (FFB_BK25_SMOOTH_DIR, r'MBK25 (log-normal $c$ scatter)',     'steelblue', '-',  3.0),
         (FFB_NOSIGMOID_DIR,   r'Li+24 (sharp cutoff)',              'firebrick',  '--', 3.0),
-        (FFB_BK25_DIR,        r'BK25 (sharp cutoff)',               'darkgreen',  '--', 3.0),
+        (FFB_BK25_DIR,        r'MBK25 (sharp cutoff)',               'darkgreen',  '--', 3.0),
     ]
     for path, label, color, ls, lw in model_defs:
         if os.path.exists(path):
@@ -6198,7 +6967,7 @@ def plot_20_smf_lowz_grid():
         })
     if os.path.exists(VANILLA_DIR):
         models.append({
-            'path': VANILLA_DIR, 'label': 'C16',
+            'path': VANILLA_DIR, 'label': 'SAGE16',
             'color': 'firebrick', 'ls': '--', 'lw': 2.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
@@ -6310,10 +7079,10 @@ def plot_20_smf_lowz_grid():
 
     # Split legends: SAGE26 models lower left, observations upper right
     handles, labels = axes[0].get_legend_handles_labels()
-    sim_h = [h for h, l in zip(handles, labels) if l.startswith('SAGE26') or l == 'C16']
-    sim_l = [l for l in labels if l.startswith('SAGE26') or l == 'C16']
-    obs_h = [h for h, l in zip(handles, labels) if not (l.startswith('SAGE26') or l == 'C16')]
-    obs_l = [l for l in labels if not (l.startswith('SAGE26') or l == 'C16')]
+    sim_h = [h for h, l in zip(handles, labels) if l.startswith('SAGE26') or l == 'SAGE16']
+    sim_l = [l for l in labels if l.startswith('SAGE26') or l == 'SAGE16']
+    obs_h = [h for h, l in zip(handles, labels) if not (l.startswith('SAGE26') or l == 'SAGE16')]
+    obs_l = [l for l in labels if not (l.startswith('SAGE26') or l == 'SAGE16')]
     if sim_l:
         leg1 = axes[0].legend(sim_h, sim_l, loc='lower left', frameon=False)
         axes[0].add_artist(leg1)
@@ -6356,13 +7125,13 @@ def plot_21_smf_lowz_lowmass_grid():
     if os.path.exists(C16_FEEDBACK_DIR):
         models.append({
             'path': C16_FEEDBACK_DIR, 'label': 'SAGE26 (C16 Feedback)',
-            'color': 'dodgerblue', 'ls': '-', 'lw': 3.5,
+            'color': 'steelblue', 'ls': '-', 'lw': 3.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
         })
     if os.path.exists(VANILLA_DIR):
         models.append({
-            'path': VANILLA_DIR, 'label': 'C16',
+            'path': VANILLA_DIR, 'label': 'SAGE16',
             'color': 'firebrick', 'ls': '--', 'lw': 2.5,
             'redshifts': mill_redshifts, 'first_snap': 0, 'last_snap': 63,
             'volume': VOLUME, 'mass_convert': MASS_CONVERT,
@@ -6472,10 +7241,10 @@ def plot_21_smf_lowz_lowmass_grid():
 
     # Split legends: SAGE26 models lower left, observations lower right
     handles, labels = axes[0].get_legend_handles_labels()
-    sim_h = [h for h, l in zip(handles, labels) if l.startswith('SAGE26') or l == 'C16']
-    sim_l = [l for l in labels if l.startswith('SAGE26') or l == 'C16']
-    obs_h = [h for h, l in zip(handles, labels) if not (l.startswith('SAGE26') or l == 'C16')]
-    obs_l = [l for l in labels if not (l.startswith('SAGE26') or l == 'C16')]
+    sim_h = [h for h, l in zip(handles, labels) if l.startswith('SAGE26') or l == 'SAGE16']
+    sim_l = [l for l in labels if l.startswith('SAGE26') or l == 'SAGE16']
+    obs_h = [h for h, l in zip(handles, labels) if not (l.startswith('SAGE26') or l == 'SAGE16')]
+    obs_l = [l for l in labels if not (l.startswith('SAGE26') or l == 'SAGE16')]
     if sim_l:
         leg1 = axes[0].legend(sim_h, sim_l, loc='lower left', frameon=False)
         axes[0].add_artist(leg1)
@@ -6573,10 +7342,21 @@ def plot_22_regime_histogram():
     ax.set_yscale('log')
     ax.set_ylabel('Number of Galaxies')
     ax.set_xlabel(r'$\log_{10}(1+z)$')
-    ax.legend(loc='best', frameon=False)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), frameon=False, ncol=2)
 
     ax.set_xlim(np.log10(1+15), 0)
+
+    # Add top x-axis for redshift
+    ax2 = ax.twiny()
+    ax2.set_xlim(ax.get_xlim())
+    z_ticks = [0, 1, 2, 3, 5, 7, 10, 15]
+    log1pz_ticks = [np.log10(1 + zt) for zt in z_ticks]
+    ax2.set_xticks(log1pz_ticks)
+    ax2.set_xticklabels([str(zt) for zt in z_ticks])
+    ax2.set_xlabel(r'$z$')
+
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.2)
 
     outputFile = os.path.join(OUTPUT_DIR, 'Regime_Histogram_Evolution' + OUTPUT_FORMAT)
     plt.savefig(outputFile)
@@ -6663,10 +7443,21 @@ def plot_23_ffb_histogram():
     ax.set_yscale('log')
     ax.set_ylabel('Number of Galaxies')
     ax.set_xlabel(r'$\log_{10}(1+z)$')
-    ax.legend(loc='upper left', frameon=False)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), frameon=False, ncol=2)
 
     ax.set_xlim(np.log10(1+15), 0)
+
+    # Add top x-axis for redshift
+    ax2 = ax.twiny()
+    ax2.set_xlim(ax.get_xlim())
+    z_ticks = [0, 1, 2, 3, 5, 7, 10, 15]
+    log1pz_ticks = [np.log10(1 + zt) for zt in z_ticks]
+    ax2.set_xticks(log1pz_ticks)
+    ax2.set_xticklabels([str(zt) for zt in z_ticks])
+    ax2.set_xlabel(r'$z$')
+
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.2)
 
     outputFile = os.path.join(OUTPUT_DIR, 'FFB_Histogram_Evolution' + OUTPUT_FORMAT)
     plt.savefig(outputFile)
@@ -6759,13 +7550,22 @@ def plot_23b_ffb_histogram_bk25():
                label=model['label'], edgecolor='black', color=colors_ffb)
 
     ax.set_yscale('log')
-    ax.set_ylim(top=1e9)
     ax.set_ylabel('Number of Galaxies')
     ax.set_xlabel(r'$\log_{10}(1+z)$')
     ax.set_xlim(np.log10(1+15), 0)
-    ax.legend(loc='best', frameon=False)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), frameon=False, ncol=3)
+
+    # Add top x-axis for redshift
+    ax2 = ax.twiny()
+    ax2.set_xlim(ax.get_xlim())
+    z_ticks = [0, 1, 2, 3, 5, 7, 10, 15]
+    log1pz_ticks = [np.log10(1 + zt) for zt in z_ticks]
+    ax2.set_xticks(log1pz_ticks)
+    ax2.set_xticklabels([str(zt) for zt in z_ticks])
+    ax2.set_xlabel(r'$z$')
 
     fig.tight_layout()
+    plt.subplots_adjust(bottom=0.2)
     outputFile = os.path.join(OUTPUT_DIR, 'FFB_Histogram_Li24_vs_BK25' + OUTPUT_FORMAT)
     plt.savefig(outputFile)
     print(f'Saved file to {outputFile}\n')
@@ -6782,27 +7582,25 @@ def plot_24_mass_loading_vs_velocity(primary, vanilla):
 
     # --- Primary model ---
     w = (primary['MassLoading'] > 0) & (primary['Vvir'] > 0)
-    log_vvir =primary['Vvir'][w]
-    log_massloading = primary['MassLoading'][w]
-
-    X, Y, Z = density_contour(log_vvir, log_massloading,
-                              bins=[np.linspace(0, 500, 101),
-                                    np.linspace(0, 30.0, 101)])
+    vvir = primary['Vvir'][w]
+    mass_loading = primary['MassLoading'][w]
 
     # --- Plot ---
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
-    if Z.max() > 0:
-        levels = sigma_contour_levels(Z)
-        if levels is not None:
-            ax.contourf(X, Y, Z, levels=levels, cmap='Blues_r', alpha=0.6)
-            ax.contour(X, Y, Z, levels=levels, colors='steelblue',
-                       linestyles='-', alpha=1.0, linewidths=1.5)
+    vvir_bins = np.linspace(0.0, 500.0, 51)
+    plot_binned_median_1sigma(
+        ax, vvir, mass_loading, vvir_bins,
+        color='steelblue', label='SAGE26',
+        alpha=0.25, lw=3.5, min_count=50,
+        zorder_fill=2, zorder_line=3,
+    )
 
     vvir_theory = np.logspace(1, 3, 100)  # 10 to 1000 km/s
     mass_loading_theory = calculate_muratov_mass_loading(vvir_theory, z=0.0)
-    ax.plot(vvir_theory, mass_loading_theory, color='k', lw=2.5, ls='--')
+    ax.plot(vvir_theory, mass_loading_theory, color='k', lw=2.5, ls='--',
+            label='Muratov+16 Theory')
 
     chisholm_ml = pd.read_csv('./data/Chisholm_17_ml.csv', header=None, delimiter='\t')
     chisholm_x = chisholm_ml[0]  # First column
@@ -6820,10 +7618,10 @@ def plot_24_mass_loading_vs_velocity(primary, vanilla):
     sugahara_x = sugahara_ml[0]  # First column
     sugahara_y = sugahara_ml[1]  # Second column 
 
-    ax.scatter(chisholm_x, chisholm_y, color='k', marker='o', s=50, label='Chisholm+17', edgecolors='k', linewidths=1.0, facecolors='lightgray', alpha=0.6)
-    ax.scatter(heckman_x, heckman_y, color='k', marker='x', s=50, label='Heckman+15', edgecolors='k', linewidths=1.0, facecolors='lightgray', alpha=0.6)
-    ax.scatter(rupke_x, rupke_y, color='k', marker='s', s=50, label='Rupke+05', edgecolors='k', linewidths=1.0, facecolors='lightgray', alpha=0.6)
-    ax.scatter(sugahara_x, sugahara_y, color='k', marker='d', s=50, label='Sugahara+17', edgecolors='k', linewidths=1.0, facecolors='lightgray', alpha=0.6)
+    ax.scatter(chisholm_x, chisholm_y, color='k', marker='o', s=50, label='Chisholm+17', edgecolors='k', linewidths=1.0, facecolors='gray', alpha=0.6)
+    ax.scatter(heckman_x, heckman_y, color='k', marker='x', s=50, label='Heckman+15', edgecolors='k', linewidths=1.0, facecolors='gray', alpha=0.6)
+    ax.scatter(rupke_x, rupke_y, color='k', marker='s', s=50, label='Rupke+05', edgecolors='k', linewidths=1.0, facecolors='gray', alpha=0.6)
+    ax.scatter(sugahara_x, sugahara_y, color='k', marker='d', s=50, label='Sugahara+17', edgecolors='k', linewidths=1.0, facecolors='gray', alpha=0.6)
             
     ax.set_xlim(0, 500)
     # ax.set_xscale('log')
@@ -6833,22 +7631,15 @@ def plot_24_mass_loading_vs_velocity(primary, vanilla):
     ax.set_xlabel(r'$V_{\mathrm{vir}}\ [\mathrm{km/s}]$')
     ax.set_ylabel(r'$\eta_{\mathrm{reheat}}$')
 
-    from matplotlib.patches import Patch
-    from matplotlib.lines import Line2D
-    sim_handles = [Patch(facecolor='steelblue', alpha=0.6, label='SAGE26'),
-                   Line2D([0], [0], color='k', linestyle='--', label='Muratov+16 Theory')]
-    sim_labels = ['SAGE26', 'Muratov+16 Theory']
-    obs_handles, obs_labels = [], []
-    for h, l in zip(*ax.get_legend_handles_labels()):
-        if l == 'C16':
-            sim_handles.append(h)
-            sim_labels.append(l)
-        else:
-            obs_handles.append(h)
-            obs_labels.append(l)
-    leg1 = _standard_legend(ax, loc='upper right', handles=sim_handles, labels=sim_labels)
+    handles, labels = ax.get_legend_handles_labels()
+    sim_set = {'SAGE26', 'Muratov+16 Theory'}
+    sim_h = [h for h, l in zip(handles, labels) if l in sim_set]
+    sim_l = [l for l in labels if l in sim_set]
+    obs_h = [h for h, l in zip(handles, labels) if l not in sim_set]
+    obs_l = [l for l in labels if l not in sim_set]
+    leg1 = _standard_legend(ax, loc='upper right', handles=sim_h, labels=sim_l)
     ax.add_artist(leg1)
-    _standard_legend(ax, loc='center right', handles=obs_handles, labels=obs_labels)
+    _standard_legend(ax, loc='center right', handles=obs_h, labels=obs_l)
 
     ax.xaxis.set_major_locator(plt.MultipleLocator(100.0))
     ax.yaxis.set_major_locator(plt.MultipleLocator(2.0))
@@ -6868,7 +7659,7 @@ def plot_24_mass_loading_vs_velocity(primary, vanilla):
 _GAS_MODELS = [
     {'dir': PRIMARY_DIR,  'label': 'SAGE26 (BR06)', 'color': 'black'},
     {'dir': GD14_DIR,     'label': 'GD14',          'color': 'goldenrod'},
-    {'dir': KD12_DIR,     'label': 'KD12',          'color': 'dodgerblue'},
+    {'dir': KD12_DIR,     'label': 'KD12',          'color': 'steelblue'},
     {'dir': KMT09_DIR,    'label': 'KMT09',         'color': 'limegreen'},
     {'dir': K13_DIR,      'label': 'K13',            'color': 'firebrick'},
 ]
@@ -6960,7 +7751,7 @@ def _gas_ratio_plot(gas_prop, obs_file, obs_label, ylabel, output_name):
         ax.errorbar(log_ms[omask], med[omask], yerr=[yerr_lo, yerr_hi],
                     fmt='o', color='k', markersize=8,
                     label=obs_label, zorder=10, linewidth=1.0,
-                    markerfacecolor='lightgray', markeredgecolor='k',
+                    markerfacecolor='gray', markeredgecolor='k',
                     markeredgewidth=1.0, alpha=0.6)
 
     ax.set_xlim(8, 12)
@@ -7349,7 +8140,7 @@ def plot_32_hi_mass_function():
         )
 
         # Model line with bootstrap shading
-        good = np.isfinite(phi)
+        good = np.isfinite(phi) & np.isfinite(phi_lo) & np.isfinite(phi_hi)
         lw = 3.5 if i == 0 else 2.0
         ax.plot(centers[good], phi[good], color=model['color'], lw=lw,
                 label=model['label'], zorder=10 - i)
@@ -7372,7 +8163,7 @@ def plot_32_hi_mass_function():
             yerr_hi = obs['phi_err_hi'][obs_mask]
             ax.errorbar(mass[obs_mask], phi_obs[obs_mask], yerr=[yerr_lo, yerr_hi],
                         fmt=obs['marker'], color=obs['color'],
-                        markerfacecolor='lightgray' if obs['color'] == 'gray' else 'white',
+                        markerfacecolor='gray' if obs['color'] == 'gray' else 'white',
                         markeredgecolor=obs['color'] if obs['color'] != 'gray' else 'k',
                         markeredgewidth=1.0,
                         ms=7, lw=1.0, capsize=2, alpha=0.8,
@@ -7385,7 +8176,7 @@ def plot_32_hi_mass_function():
             yerr_hi = phi_hi_obs - phi_obs[obs_mask]
             ax.errorbar(mass[obs_mask], phi_obs[obs_mask], yerr=[yerr_lo, yerr_hi],
                         fmt=obs['marker'], color=obs['color'],
-                        markerfacecolor='lightgray',
+                        markerfacecolor='gray',
                         markeredgecolor='k',
                         markeredgewidth=1.0,
                         ms=7, lw=1.0, capsize=2, alpha=0.8,
@@ -7402,7 +8193,7 @@ def plot_32_hi_mass_function():
     ax.set_xlabel(r'$\log_{10}\ M_{\mathrm{HI}}\ [M_{\odot}]$')
     ax.set_ylabel(r'$\log_{10}\ \phi\ [\mathrm{Mpc}^{-3}\ \mathrm{dex}^{-1}]$')
 
-    # Separate legends: models below x-axis, observations in plot
+    # Separate legends: models and observations both inside the plot
     handles, labels = ax.get_legend_handles_labels()
     model_labels = [m['label'] for m in _GAS_MODELS]
     model_h = [h for h, l in zip(handles, labels) if l in model_labels]
@@ -7410,20 +8201,209 @@ def plot_32_hi_mass_function():
     obs_h = [h for h, l in zip(handles, labels) if l not in model_labels]
     obs_l = [l for l in labels if l not in model_labels]
 
-    # Model legend below x-axis (2 rows)
-    ax.legend(model_h, model_l, loc='upper center',
-              bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False)
+    if model_h:
+        model_leg = ax.legend(model_h, model_l, loc='lower left', frameon=False)
+        ax.add_artist(model_leg)
 
-    # Observation legend inside plot
     if obs_h:
-        obs_leg = ax.legend(obs_h, obs_l, loc='lower left', frameon=False)
-        ax.add_artist(obs_leg)
-        # Re-add model legend (add_artist removes it)
-        ax.legend(model_h, model_l, loc='upper center',
-                  bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False)
+        ax.legend(obs_h, obs_l, loc='upper right', frameon=False)
 
-    fig.subplots_adjust(bottom=0.22)
     save_figure(fig, os.path.join(OUTPUT_DIR, 'HI_Mass_Function' + OUTPUT_FORMAT))
+
+
+# ========================== PLOT 33: H2 MASS FUNCTION ==========================
+
+def load_h2mf_observations():
+    """
+    Load H2 mass function observations from Fletcher+21 and Boselli+14.
+
+    Returns a list of dicts with 'label', 'mass', 'phi', 'phi_lo', 'phi_hi',
+    'marker', 'color'.
+    """
+    observations = []
+
+    # Boselli et al. (2014) - H2 mass function
+    # The file contains two sections: constant X_CO and luminosity-dependent X_CO.
+    path_b14 = os.path.join(OBS_DIR, 'GasMF', 'B14_MH2MF.dat')
+    if os.path.exists(path_b14):
+        try:
+            with open(path_b14, 'r') as fh:
+                lines = fh.readlines()
+
+            sections = []
+            current = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    if current:
+                        sections.append(np.array(current, dtype=float))
+                        current = []
+                    continue
+                current.append([float(x) for x in stripped.split()[:4]])
+            if current:
+                sections.append(np.array(current, dtype=float))
+
+            if len(sections) >= 1:
+                data = sections[0]
+                observations.append({
+                    'label': 'Boselli+14 (const. X_CO)',
+                    'mass': data[:, 0],
+                    'phi': data[:, 1],
+                    'phi_lo': data[:, 2],
+                    'phi_hi': data[:, 3],
+                    'marker': 'D',
+                    'color': 'gray',
+                    'edgecolor': 'k',
+                })
+            if len(sections) >= 2:
+                data = sections[1]
+                observations.append({
+                    'label': 'Boselli+14 (lum.-dep. X_CO)',
+                    'mass': data[:, 0],
+                    'phi': data[:, 1],
+                    'phi_lo': data[:, 2],
+                    'phi_hi': data[:, 3],
+                    'marker': '^',
+                    'color': 'gray',
+                    'edgecolor': 'k',
+                })
+        except Exception as e:
+            print(f"  Warning: could not load {path_b14}: {e}")
+
+    # Fletcher et al. (2021) - Detected + Non-detected
+    path_det = os.path.join(OBS_DIR, 'H2MF_Fletcher21_DetNonDet.dat')
+    if os.path.exists(path_det):
+        try:
+            data = np.loadtxt(path_det, comments='#')
+            observations.append({
+                'label': 'Fletcher+20 (Det+NonDet)',
+                'mass': data[:, 0],
+                'phi': data[:, 1],
+                'phi_lo': data[:, 2],
+                'phi_hi': data[:, 3],
+                'marker': 's',
+                'color': 'k',
+                'edgecolor': 'k',
+            })
+        except Exception as e:
+            print(f"  Warning: could not load {path_det}: {e}")
+
+    # Fletcher et al. (2021) - Estimated
+    path_est = os.path.join(OBS_DIR, 'H2MF_Fletcher21_Estimated.dat')
+    if os.path.exists(path_est):
+        try:
+            data = np.loadtxt(path_est, comments='#')
+            observations.append({
+                'label': 'Fletcher+20 (Estimated)',
+                'mass': data[:, 0],
+                'phi': data[:, 1],
+                'phi_lo': data[:, 2],
+                'phi_hi': data[:, 3],
+                'marker': 'o',
+                'color': 'gray',
+                'edgecolor': 'k',
+            })
+        except Exception as e:
+            print(f"  Warning: could not load {path_est}: {e}")
+
+    return observations
+
+
+def plot_33_h2_mass_function():
+    """
+    H2 mass function at z=0 with bootstrap error shading.
+
+    Compares multiple H2 prescription models with observational data from
+    Fletcher+21 (xCOLD GASS) and Boselli+14.
+    """
+    print('Plot 33: H2 Mass Function')
+
+    binwidth = 0.2
+    N_BOOT = 100
+    MASS_CUT = 1e8  # Minimum H2 mass
+
+    # --- Plot ---
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    # Loop over all H2 models
+    for i, model in enumerate(_GAS_MODELS):
+        dirpath = model['dir']
+        if not model_files_exist(dirpath):
+            print(f"  Skipping {model['label']}: directory not found")
+            continue
+
+        # Load model data
+        data = load_model(dirpath, properties=['H2gas'])
+        h2gas = data['H2gas']
+
+        # Select galaxies with H2 mass > cut
+        valid = h2gas > MASS_CUT
+        log_mh2 = np.log10(h2gas[valid])
+
+        print(f"  {model['label']}: {np.sum(valid):,} galaxies with H2gas > {MASS_CUT:.0e}")
+
+        # Compute mass function with bootstrap errors
+        centers, phi, phi_lo, phi_hi, _ = mass_function_bootstrap(
+            log_mh2, VOLUME, binwidth=binwidth, n_boot=N_BOOT
+        )
+
+        # Model line with bootstrap shading
+        good = np.isfinite(phi) & np.isfinite(phi_lo) & np.isfinite(phi_hi)
+        lw = 3.5 if i == 0 else 2.0
+        ax.plot(centers[good], phi[good], color=model['color'], lw=lw,
+                label=model['label'], zorder=10 - i)
+        ax.fill_between(centers[good], phi_lo[good], phi_hi[good],
+                        color=model['color'], alpha=0.2, edgecolor='none', zorder=9 - i)
+
+    # Load and plot observations
+    obs_list = load_h2mf_observations()
+    for obs in obs_list:
+        mass = obs['mass']
+        phi_obs = obs['phi']
+
+        obs_mask = mass >= 8.0
+
+        # Fletcher+21 uses absolute phi bounds
+        phi_lo_obs = obs['phi_lo'][obs_mask]
+        phi_hi_obs = obs['phi_hi'][obs_mask]
+        yerr_lo = phi_obs[obs_mask] - phi_lo_obs
+        yerr_hi = phi_hi_obs - phi_obs[obs_mask]
+        ax.errorbar(mass[obs_mask], phi_obs[obs_mask], yerr=[yerr_lo, yerr_hi],
+                    fmt=obs['marker'], color=obs['color'],
+                    markerfacecolor='gray',
+                    markeredgecolor=obs.get('edgecolor', 'k'),
+                    markeredgewidth=1.0,
+                    ms=7, lw=1.0, capsize=2, alpha=0.8,
+                    label=obs['label'], zorder=8)
+
+    # Axis settings
+    ax.set_xlim(8.0, 11.0)
+    ax.set_ylim(-5.5, -0.5)
+    ax.xaxis.set_major_locator(plt.MultipleLocator(1.0))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(1.0))
+    ax.xaxis.set_minor_locator(plt.MultipleLocator(0.2))
+    ax.yaxis.set_minor_locator(plt.MultipleLocator(0.2))
+
+    ax.set_xlabel(r'$\log_{10}\ M_{\mathrm{H_2}}\ [M_{\odot}]$')
+    ax.set_ylabel(r'$\log_{10}\ \phi\ [\mathrm{Mpc}^{-3}\ \mathrm{dex}^{-1}]$')
+
+    # Separate legends: models and observations both inside the plot
+    handles, labels = ax.get_legend_handles_labels()
+    model_labels = [m['label'] for m in _GAS_MODELS]
+    model_h = [h for h, l in zip(handles, labels) if l in model_labels]
+    model_l = [l for l in labels if l in model_labels]
+    obs_h = [h for h, l in zip(handles, labels) if l not in model_labels]
+    obs_l = [l for l in labels if l not in model_labels]
+
+    if model_h:
+        model_leg = ax.legend(model_h, model_l, loc='lower left', frameon=False)
+        ax.add_artist(model_leg)
+
+    if obs_h:
+        ax.legend(obs_h, obs_l, loc='upper right', frameon=False)
+
+    save_figure(fig, os.path.join(OUTPUT_DIR, 'H2_Mass_Function' + OUTPUT_FORMAT))
 
 
 # ========================== MAIN ==========================
@@ -7452,6 +8432,9 @@ EVOLUTION_PLOTS = {
     11: plot_11_ffb_properties,
     111: plot_11b_ffb_histograms,
     12: plot_12_sfh_ffb,
+    121: plot_12b_ffb_regime_history,
+    122: plot_12c_ffb_regime_heatmap,
+    123: plot_12d_sfh_ffb_transitions,
     13: plot_13_ffb_vs_redshift,
 }
 
@@ -7478,6 +8461,7 @@ STANDALONE_PLOTS = {
     28: plot_28_mdot_vs_mvir,
     29: plot_29_mdot_vs_vvir,
     32: plot_32_hi_mass_function,
+    33: plot_33_h2_mass_function,
 }
 
 ALL_PLOTS = {**Z0_PLOTS, **EVOLUTION_PLOTS, **STANDALONE_PLOTS}
