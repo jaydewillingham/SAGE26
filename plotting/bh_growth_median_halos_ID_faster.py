@@ -34,7 +34,7 @@ plt.rcParams['figure.facecolor'] = 'white'
 plt.rcParams['axes.facecolor'] = 'white'
 plt.rcParams['axes.edgecolor'] = 'black'
 
-OutputFormat = '.pdf'
+OutputFormat = '.png'
 
 # ============================================================
 # USER OPTIONS
@@ -42,7 +42,7 @@ OutputFormat = '.pdf'
 MIN_STELLAR_MASS_LOG = 8.5
 MIN_HALO_MASS_LOG = 11.0
 TRACKING_RANGE = "all"  
-PLOT_DIGITISED_TXT = True
+PLOT_DIGITISED_TXT = False
 DIGITISED_TXT_FILENAME = "./plotting/BH_mass_growth_refined_digitised.txt"
 SAVE_RAW_DATA = False  # OPT: Option to save raw percentile data to CSV for later analysis
 
@@ -229,7 +229,7 @@ def main():
     global TRACKING_RANGE
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input-pattern', type=str, default='./output/millennium_insitu_new/model_*.hdf5')
+    parser.add_argument('-i', '--input-pattern', type=str, default='./output/millennium/model_*.hdf5')
     parser.add_argument('-s', '--snapshot', type=int, default=None)
     parser.add_argument('-o', '--output-dir', type=str, default=None)
     parser.add_argument('--no-plot', action='store_true', help='Skip plotting (faster)')
