@@ -102,12 +102,15 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].QuasarModeBHaccretionMass = 0.0;
 
     galaxies[p].BHSeedMass = 0.0;
+    galaxies[p].BHMaxaccretionMass = 0.0;
+
     for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
         galaxies[p].RadioModeBHaccretionMass[snap] = 0.0;
         galaxies[p].MergerDrivenBHaccretionMass[snap] = 0.0;
         galaxies[p].InstabilityDrivenBHaccretionMass[snap] = 0.0;
         galaxies[p].BHMergerMass[snap] = 0.0;
     }
+    
     galaxies[p].TimeOfLastMajorMerger = -1.0;
     galaxies[p].TimeOfLastMinorMerger = -1.0;
     galaxies[p].OutflowRate = 0.0;

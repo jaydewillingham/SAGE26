@@ -9,6 +9,7 @@
 #include "core_cool_func.h"
 
 #include "model_cooling_heating.h"
+#include "model_enhanced_bhphysics.h"
 #include "model_misc.h"
 
 
@@ -765,11 +766,15 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         }
 
         // Eddington rate
-        EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (0.1 * 9e10);
+
+        EDDrate = eddington_accretion_rate(galaxies[centralgal].BlackHoleMass, run_params);
+        //EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (0.1 * 9e10); To Delete
 
         // accretion onto BH is always limited by the Eddington rate
         if(AGNrate > EDDrate) {
-            AGNrate = EDDrate;
+            AGNrate = eddington_limited_accretion_rate(AGNrate, 1, galaxies[centralgal].BlackHoleMass, 
+                                                run_params, &galaxies[centralgal].BHMaxaccretionMass);
+            //AGNrate = EDDrate;
         }
 
         // accreted mass onto black hole
