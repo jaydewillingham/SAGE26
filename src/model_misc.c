@@ -102,7 +102,9 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].QuasarModeBHaccretionMass = 0.0;
 
     galaxies[p].BHSeedMass = 0.0;
-    galaxies[p].BHMaxaccretionMass = 0.0;
+    for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
+        galaxies[p].BHMaxaccretionMass[snap] = 0.0;
+    }
 
     for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
         galaxies[p].RadioModeBHaccretionMass[snap] = 0.0;

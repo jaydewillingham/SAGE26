@@ -1152,7 +1152,7 @@ int32_t prepare_galaxy_for_hdf5_output(const struct GALAXY *g, struct save_info 
     save_info->buffer_output_gals[output_snap_idx].tdeplete[gals_in_buffer] = g->tdeplete;
     save_info->buffer_output_gals[output_snap_idx].RcoolToRvir[gals_in_buffer] = g->RcoolToRvir;
     save_info->buffer_output_gals[output_snap_idx].g_max[gals_in_buffer] = g->g_max;
-    save_info->buffer_output_gals[output_snap_idx].BHMaxaccretionMass[gals_in_buffer] = g->BHMaxaccretionMass;
+    save_info->buffer_output_gals[output_snap_idx].BHMaxaccretionMass[gals_in_buffer] = g->BHMaxaccretionMass[g->SnapNum];
 
     float tmp_SfrDisk = 0.0;
     float tmp_SfrBulge = 0.0;

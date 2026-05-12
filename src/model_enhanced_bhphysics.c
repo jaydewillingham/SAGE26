@@ -28,10 +28,15 @@ double eddington_accretion_rate(const double black_hole_mass, const struct param
 }
 
 // Accretion rate limiter by Eddington limit
-double eddington_limited_accretion_rate(double accretion_mass, int eddington_flag, double black_hole_mass, 
-                                        const struct params *run_params, float *BHMaxaccretionMass)
+double eddington_limited_accretion_rate(double accretion_mass, int eddington_flag, double black_hole_mass,
+                                        int snapnum, const struct params *run_params,
+                                        float BHMaxaccretionMass[ABSOLUTEMAXSNAPS])
 {
     double edd_rate;
+
+    if(snapnum < 0 || snapnum >= ABSOLUTEMAXSNAPS) {
+        return accretion_mass;
+    }
     
     // Only apply Eddington limit if flag is set and we have a valid accretion rate
     if (eddington_flag && accretion_mass > 0.0)
@@ -42,12 +47,12 @@ double eddington_limited_accretion_rate(double accretion_mass, int eddington_fla
         // If accretion exceeds Eddington limit, cap it and store the original value
         if (accretion_mass > edd_rate)
         {
-            *BHMaxaccretionMass = (float)accretion_mass;  // Store the unlimited accretion rate
+            BHMaxaccretionMass[snapnum] = (float)accretion_mass;  // Store the unlimited accretion rate
             return edd_rate;  // Return the Eddington-limited rate
         }
     }
     
     // If not limited by Eddington, store the accretion rate and return as-is
-    *BHMaxaccretionMass = (float)accretion_mass;
+    BHMaxaccretionMass[snapnum] = (float)accretion_mass;
     return accretion_mass;
 }
