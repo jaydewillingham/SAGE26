@@ -160,7 +160,6 @@ def read_data(file_list, snap_num, id_field, h_h):
 
 def create_eddington_redshift_plot(
     bh_max_accr_history,
-    b_snaps,
     plot_mask,
     snap_to_z_dict,
     total_galaxies,
@@ -168,90 +167,107 @@ def create_eddington_redshift_plot(
     eddington_threshold=0.0,
     n_bins_z=20
 ):
-    
+
     fig, ax = plt.subplots(figsize=(10, 7))
     ax.minorticks_on()
-    
-    # Extract filtered data
+
+    # Filter data
     bh_hist_filtered = bh_max_accr_history[plot_mask]
-    b_snaps_filtered = b_snaps[plot_mask]
-    
-    ngal = len(b_snaps_filtered)
+
+    # Ensure 2D shape
+    if bh_hist_filtered.ndim == 1:
+        bh_hist_filtered = bh_hist_filtered.reshape(-1, 1)
+
+    ngal = bh_hist_filtered.shape[0]
     maxsnaps = bh_hist_filtered.shape[1]
-    
+
     print(f"Processing {ngal} galaxies with {maxsnaps} snapshots each")
-    print(f"Counting Eddington exceedances as: BHMaxaccretionMass[snap] > {eddington_threshold}")
-    
-    # For each snapshot, count how many galaxies exceeded Eddington
-    # Only count galaxies that have been born by that snapshot
+    print(f"Counting super-Eddington attempts as: "
+          f"BHMaxaccretionMass[snap] > {eddington_threshold}")
+
+    # Count BHs with super-Eddington accretion at each snapshot
     snap_counts_edd = np.zeros(maxsnaps)
-    snap_counts_total = np.zeros(maxsnaps)
-    
+
     for snap_idx in range(maxsnaps):
-        # Which galaxies have been born by this snapshot?
-        born_mask = b_snaps_filtered <= snap_idx
-        snap_counts_total[snap_idx] = np.sum(born_mask)
-        
-        if snap_counts_total[snap_idx] > 0:
-            # Among born galaxies, how many exceeded Eddington?
-            # BHMaxaccretionMass[snap] > 0 means Eddington was exceeded
-            edd_at_snap = (bh_hist_filtered[born_mask, snap_idx] > eddington_threshold)
-            snap_counts_edd[snap_idx] = np.sum(edd_at_snap)
-    
-    # Convert snapshot indices to redshifts
-    redshifts = np.array([get_redshift_from_snapshot(s, snap_to_z_dict) for s in range(maxsnaps)])
-    
+
+        # BHMaxaccretionMass > 0 means attempted accretion exceeded Eddington
+        edd_at_snap = bh_hist_filtered[:, snap_idx] > eddington_threshold
+
+        snap_counts_edd[snap_idx] = np.sum(edd_at_snap)
+
+    # Convert snapshot indices to redshift
+    redshifts = np.array([
+        get_redshift_from_snapshot(s, snap_to_z_dict)
+        for s in range(maxsnaps)
+    ])
+
+    # Restrict analysis to 0 <= z <= 7
+    valid_snap_mask = (redshifts >= 0.0) & (redshifts <= 7.0)
+
+    redshifts = redshifts[valid_snap_mask]
+    snap_counts_edd = snap_counts_edd[valid_snap_mask]
+
     # Bin by redshift
     z_bins = np.linspace(redshifts.min(), redshifts.max(), n_bins_z + 1)
     z_bin_centers = 0.5 * (z_bins[:-1] + z_bins[1:])
     z_bin_width = z_bins[1] - z_bins[0]
-    
+
     binned_counts_edd = np.zeros(n_bins_z)
-    binned_counts_total = np.zeros(n_bins_z)
-    
+
     for i in range(n_bins_z):
-        snaps_in_bin = np.where((redshifts >= z_bins[i]) & (redshifts < z_bins[i+1]))[0]
+
+        snaps_in_bin = np.where(
+            (redshifts >= z_bins[i]) &
+            (redshifts < z_bins[i + 1])
+        )[0]
+
         if len(snaps_in_bin) > 0:
-            binned_counts_edd[i] = np.sum(snap_counts_edd[snaps_in_bin])
-            binned_counts_total[i] = np.sum(snap_counts_total[snaps_in_bin])
-    
-    # Density: count per bin / (total galaxies × bin width)
-    density = binned_counts_edd / (total_galaxies * z_bin_width)
-    
-    # Plot density
-    ax.step(z_bin_centers, density, where='mid', linewidth=2.5, 
-            color='#D32F2F', label='Eddington Exceedances', marker='o', markersize=7)
-    ax.fill_between(z_bin_centers, density, step='mid', alpha=0.2, color='#D32F2F')
-    
-    # Also show fraction on secondary axis
-    ax_twin = ax.twinx()
-    fraction = np.where(binned_counts_total > 0, binned_counts_edd / binned_counts_total, 0)
-    ax_twin.plot(z_bin_centers, fraction, linewidth=2.0, 
-                 color='#1976D2', alpha=0.6, linestyle='--', marker='s', markersize=5,
-                 label='Fraction of Galaxies')
-    
+            binned_counts_edd[i] = np.sum(
+                snap_counts_edd[snaps_in_bin]
+            )
+
+    # Fraction per redshift bin
+    fraction = binned_counts_edd / total_galaxies
+
+    # Plot
+    ax.step(
+        z_bin_centers,
+        fraction,
+        where='mid',
+        linewidth=2.5,
+        color='#D32F2F',
+        marker='o',
+        markersize=7,
+        label='Super-Eddington BHs'
+    )
+
+    ax.fill_between(
+        z_bin_centers,
+        fraction,
+        step='mid',
+        alpha=0.2,
+        color='#D32F2F'
+    )
+
     ax.set_xlabel('Redshift (z)', fontsize=14)
-    ax.set_ylabel(r'Density [Events / (total × $\Delta z$)]', fontsize=12, color='#D32F2F')
-    ax_twin.set_ylabel('Fraction of Born Galaxies', fontsize=12, color='#1976D2')
-    
-    ax.tick_params(axis='y', labelcolor='#D32F2F')
-    ax_twin.tick_params(axis='y', labelcolor='#1976D2')
-    
-    ax.set_xlim(z_bins[0] - 1, z_bins[-1] + 1)
+    ax.set_ylabel('Fraction of BHs', fontsize=14)
+
+    ax.set_xlim(z_bins[0], z_bins[-1])
     ax.set_ylim(bottom=0)
-    
-    # Legend
-    lines1, labels1 = ax.get_legend_handles_labels()
-    lines2, labels2 = ax_twin.get_legend_handles_labels()
-    ax.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=11)
-    
+
+    ax.legend(loc='upper right', fontsize=11)
+
     ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
-    
+
     plt.tight_layout()
     plt.savefig(output_file, dpi=140, bbox_inches='tight')
+
     print(f"✓ Eddington vs redshift plot saved to: {output_file}")
-    print(f"  Total Eddington exceedance events (across all times): {int(np.sum(snap_counts_edd))}")
+    print(f"  Total super-Eddington snapshot occurrences: "
+          f"{int(np.sum(snap_counts_edd))}")
+
     plt.close()
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -301,19 +317,16 @@ def main():
     total_passed = np.sum(plot_mask)
     
     # Create time-series Eddington plot
-    # Note: passing zero array for birth snaps since we're not tracking growth channels anymore
-    birth_snaps = np.zeros(len(bh_mass), dtype=int)
     create_eddington_redshift_plot(
-        bh_max_accr_hist,
-        birth_snaps,
-        plot_mask,
-        MILLENNIUM_SNAP_TO_Z,
-        total_passed,
-        output_dir / 'bh_eddington_vs_redshift.png',
-        eddington_threshold=args.eddington_threshold,
-        n_bins_z=20
+    bh_max_accr_hist,
+    plot_mask,
+    MILLENNIUM_SNAP_TO_Z,
+    total_passed,
+    output_dir / 'bh_eddington_vs_redshift.png',
+    eddington_threshold=args.eddington_threshold,
+    n_bins_z=20
     )
-    
+
     print("\n✓ All plots completed successfully!")
 
 if __name__ == "__main__":

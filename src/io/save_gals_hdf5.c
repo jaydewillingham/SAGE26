@@ -18,7 +18,7 @@
 #define NUM_OUTPUT_FIELDS 2
 #pragma message "Using SAGE in MCMC mode (will only write " STR(NUM_OUTPUT_FIELDS) " fields into the hdf5 file)"
 #else
-#define NUM_OUTPUT_FIELDS 82
+#define NUM_OUTPUT_FIELDS 81
 #endif
 
 #define NUM_GALS_PER_BUFFER 8192
@@ -289,16 +289,17 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
 
         }
 
-        const char *bh_names[4] = {"RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
-        const char *bh_descriptions[4] = {
+        const char *bh_names[5] = {"BHMaxaccretionMass", "RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
+        const char *bh_descriptions[5] = {
+            "Maximum BH accretion mass across snapshots",
             "Radio mode BH accretion across snapshots",
             "Instability driven BH accretion across snapshots",
             "Merger driven BH accretion across snapshots",
             "BH merger mass across snapshots"
         };
-        const char *bh_units[4] = {"1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h"};
+        const char *bh_units[5] = {"1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h"};
 
-        for(int cum_idx = 0; cum_idx < 4; cum_idx++) {
+        for(int cum_idx = 0; cum_idx < 5; cum_idx++) {
             snprintf(full_field_name, 2*MAX_STRING_LEN - 1, "Snap_%d/%s", run_params->ListOutputSnaps[snap_idx], bh_names[cum_idx]);
 
             hsize_t dims_bh[2] = {0, (hsize_t)run_params->SimMaxSnaps};
@@ -497,19 +498,21 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
         MALLOC_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, ICS_accrete);
         MALLOC_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, ICS_sum_mt);
         MALLOC_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, g_max);
-        MALLOC_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, BHMaxaccretionMass);
 
+        save_info->buffer_output_gals[snap_idx].BHMaxaccretionMass = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].BHMergerMass = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
 
-        if(save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass == NULL ||
+        if(save_info->buffer_output_gals[snap_idx].BHMaxaccretionMass == NULL ||
+           save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass == NULL ||
            save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass == NULL ||
            save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass == NULL ||
            save_info->buffer_output_gals[snap_idx].BHMergerMass == NULL) {
             fprintf(stderr, "Could not allocate memory for BH history arrays (SimMaxSnaps=%d, buffer_size=%d)\n",
                 run_params->SimMaxSnaps, save_info->buffer_size);
+            free(save_info->buffer_output_gals[snap_idx].BHMaxaccretionMass);
             free(save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass);
             free(save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass);
             free(save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass);
@@ -811,10 +814,6 @@ int32_t finalize_hdf5_galaxy_files(const struct forest_info *forest_info, struct
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, Heating);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, BHSeedMass);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, QuasarModeBHaccretionMass);
-        free(save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass);
-        free(save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass);
-        free(save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass);
-        free(save_info->buffer_output_gals[snap_idx].BHMergerMass);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, TimeOfLastMajorMerger);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, TimeOfLastMinorMerger);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, OutflowRate);
@@ -842,7 +841,12 @@ int32_t finalize_hdf5_galaxy_files(const struct forest_info *forest_info, struct
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, ICS_accrete);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, ICS_sum_mt);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, g_max);
-        FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, BHMaxaccretionMass);
+
+        free(save_info->buffer_output_gals[snap_idx].BHMaxaccretionMass);
+        free(save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass);
+        free(save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass);
+        free(save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass);
+        free(save_info->buffer_output_gals[snap_idx].BHMergerMass);
         
         /* Conditionally free full SFH arrays if they were allocated */
         /* Conditionally free SFH arrays if they were allocated */
@@ -974,7 +978,7 @@ int32_t generate_field_metadata(char (*field_names)[MAX_STRING_LEN], char (*fiel
                                                          "TimeOfLastMajorMerger", "TimeOfLastMinorMerger", "OutflowRate", "infallMvir",
                                                          "infallVvir", "infallVmax", "infallStellarMass", "Regime", "CGMgas", "MetalsCGMgas", "MassLoading", "H2gas", "H1gas",
                                                          "tcool", "tff", "tcool_over_tff", "tdeplete", "RcoolToRvir", "TimeOfInfall", "FFBRegime", "Concentration", "mdot_cool", "mdot_stream",
-                                                         "ICS_disrupt", "ICS_accrete", "ICS_sum_mt", "g_max", "BHMaxaccretionMass"};
+                                                         "ICS_disrupt", "ICS_accrete", "ICS_sum_mt", "g_max"};
 
     // Must accurately describe what exactly each field is and any special considerations.
     char tmp_descriptions[NUM_OUTPUT_FIELDS][MAX_STRING_LEN] = {"Snapshot the galaxy is located at.",
@@ -1007,7 +1011,7 @@ int32_t generate_field_metadata(char (*field_names)[MAX_STRING_LEN], char (*fiel
                                                                 "Bulge radius formed from mergers (classical bulge).", "Bulge radius formed from disk instabilities (pseudo-bulge).",
                                                                 "Mass of stars in the bulge formed from mergers.", "Mass of stars in the bulge formed from disk instabilities.",
                                                                 "Energy rate for gas cooling in the galaxy.", "Energy rate for gas heating in the galaxy.",
-                                                                "Initial seed mass assigned to this galaxy's black hole (if any).",
+                                                                "Mass of the black hole seed when it was seeded.",
                                                                 "Mass that this galaxy's black hole accreted during the last time step.",
                                                                 "Time since this galaxy had a major merger.", "Time since this galaxy had a minor merger.",
                                                                 "Rate at which cold gas is reheated to hot gas.",
@@ -1030,34 +1034,133 @@ int32_t generate_field_metadata(char (*field_names)[MAX_STRING_LEN], char (*fiel
                                                                 "FFB Regime of this galaxy's halo: 0 = Normal halo 1 = FFB halo.", "NFW halo concentration parameter from Ishiyama+21 c-M relation.", "Cooling rate of hot halo gas.", "Cooling rate of cold streams.",
                                                                 "Cumulative stellar mass disrupted to ICS (tracks assembly).", "Cumulative ICS accreted from satellites (tracks assembly).",
                                                                 "Mass-weighted sum m*t (code time) at ICS deposition; divide by (ICS_disrupt+ICS_accrete) for mean assembly lookback.",
-                                                                "Maximum g value for this galaxy's halo across all snapshots.", "Maximum mass accreted by this galaxy's black hole at a timestep if not limited by Eddington."};
+                                                                "Maximum g value for this galaxy's halo across all snapshots."};
 
-    char tmp_units[NUM_OUTPUT_FIELDS][MAX_STRING_LEN] = {"Unitless", "Unitless", "Unitless", "Unitless", "Unitless",
-                                                         "Unitless", "Unitless", "Unitless", "Unitless",
-                                                         "Unitless", "Myr", "Mpc/h", "Mpc/h", "Mpc/h", "km/s", "km/s", "km/s",
-                                                         "Mpc * km/s", "Mpc * km/s", "Mpc * km/s", "Unitless", "1.0e10 Msun/h", "1.0e10 Msun/h",
-                                                         "Mpc/h", "km/s",
-                                                         "km/s", "km/s", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h",
-                                                         "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h",
-                                                         "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "Msun/yr", "Msun/yr", "Msun/yr",
-                                                         "Msun/yr", "Mpc/h", "Mpc/h", "Mpc/h", "Mpc/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "erg/s", "erg/s", "1.0e10 Msun/h",
-                                                         "Myr", "Myr", "Msun/yr", "1.0e10 Msun/yr", "km/s", "km/s", "1.0e10 Msun/h", "Unitless", "1.0e10 Msun/h", "1.0e10 Msun/h", "Unitless", "1.0e10 Msun/h", "1.0e10 Msun/h",
-                                                         "Myr", "Myr", "Unitless", "Myr", "Unitless", "Myr", "Unitless", "Unitless", "1.0e10 Msun/yr", "1.0e10 Msun/yr",
-                                                         "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h * code_time", "1.0e10 Msun/h", "1.0e10 Msun/h"};
+    char tmp_units[NUM_OUTPUT_FIELDS][MAX_STRING_LEN] = {
+        "Unitless", "Unitless", "Unitless", "Unitless", "Unitless",
+        "Unitless", "Unitless", "Unitless", "Unitless",
+        "Unitless", "Myr", "Mpc/h", "Mpc/h", "Mpc/h", "km/s", "km/s", "km/s",
+        "Mpc * km/s", "Mpc * km/s", "Mpc * km/s", "Unitless",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "Mpc/h", "km/s", "km/s", "km/s",
+        "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "Msun/yr", "Msun/yr", "Msun/yr",
+        "Msun/yr", "Mpc/h", "Mpc/h", "Mpc/h", "Mpc/h",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "erg/s", "erg/s",
+        "1.0e10 Msun/h",      // BHSeedMass
+        "1.0e10 Msun/h",      // QuasarModeBHaccretionMass
+        "Myr", "Myr",
+        "Msun/yr",
+        "1.0e10 Msun/yr",
+        "km/s", "km/s",
+        "1.0e10 Msun/h",
+        "Unitless",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "Unitless",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "Myr", "Myr",
+        "Unitless",
+        "Myr",
+        "Unitless",
+        "Myr",
+        "Unitless",
+        "Unitless",
+        "1.0e10 Msun/yr", "1.0e10 Msun/yr",
+        "1.0e10 Msun/h", "1.0e10 Msun/h",
+        "1.0e10 Msun/h",
+        "1.0e10 Msun/h * code_time"
+    };
 
     // These are the HDF5 datatypes for each field.
-    hsize_t tmp_dtype[NUM_OUTPUT_FIELDS] = {H5T_NATIVE_INT, H5T_NATIVE_INT, H5T_NATIVE_LLONG, H5T_NATIVE_LLONG, H5T_NATIVE_INT,
-                                            H5T_NATIVE_INT, H5T_NATIVE_LLONG, H5T_NATIVE_INT, H5T_NATIVE_INT,
-                                            H5T_NATIVE_INT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_INT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_INT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_INT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,
-                                            H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_DOUBLE, H5T_NATIVE_FLOAT};
+    hsize_t tmp_dtype[NUM_OUTPUT_FIELDS] = {
+        H5T_NATIVE_INT,    // SnapNum
+        H5T_NATIVE_INT,    // Type
+        H5T_NATIVE_LLONG,  // GalaxyIndex
+        H5T_NATIVE_LLONG,  // CentralGalaxyIndex
+        H5T_NATIVE_INT,    // SAGEHaloIndex
+        H5T_NATIVE_INT,    // SAGETreeIndex
+        H5T_NATIVE_LLONG,  // SimulationHaloIndex
+        H5T_NATIVE_INT,    // mergeType
+        H5T_NATIVE_INT,    // mergeIntoID
+        H5T_NATIVE_INT,    // mergeIntoSnapNum
+        H5T_NATIVE_FLOAT,  // dT
+        H5T_NATIVE_FLOAT,  // Posx
+        H5T_NATIVE_FLOAT,  // Posy
+        H5T_NATIVE_FLOAT,  // Posz
+        H5T_NATIVE_FLOAT,  // Velx
+        H5T_NATIVE_FLOAT,  // Vely
+        H5T_NATIVE_FLOAT,  // Velz
+        H5T_NATIVE_FLOAT,  // Spinx
+        H5T_NATIVE_FLOAT,  // Spiny
+        H5T_NATIVE_FLOAT,  // Spinz
+        H5T_NATIVE_INT,    // Len
+        H5T_NATIVE_FLOAT,  // Mvir
+        H5T_NATIVE_FLOAT,  // CentralMvir
+        H5T_NATIVE_FLOAT,  // Rvir
+        H5T_NATIVE_FLOAT,  // Vvir
+        H5T_NATIVE_FLOAT,  // Vmax
+        H5T_NATIVE_FLOAT,  // VelDisp
+        H5T_NATIVE_FLOAT,  // ColdGas
+        H5T_NATIVE_FLOAT,  // StellarMass
+        H5T_NATIVE_FLOAT,  // BulgeMass
+        H5T_NATIVE_FLOAT,  // HotGas
+        H5T_NATIVE_FLOAT,  // EjectedMass
+        H5T_NATIVE_FLOAT,  // BlackHoleMass
+        H5T_NATIVE_FLOAT,  // IntraClusterStars
+        H5T_NATIVE_FLOAT,  // MetalsColdGas
+        H5T_NATIVE_FLOAT,  // MetalsStellarMass
+        H5T_NATIVE_FLOAT,  // MetalsBulgeMass
+        H5T_NATIVE_FLOAT,  // MetalsHotGas
+        H5T_NATIVE_FLOAT,  // MetalsEjectedMass
+        H5T_NATIVE_FLOAT,  // MetalsIntraClusterStars
+        H5T_NATIVE_FLOAT,  // SfrDisk
+        H5T_NATIVE_FLOAT,  // SfrBulge
+        H5T_NATIVE_FLOAT,  // SfrDiskZ
+        H5T_NATIVE_FLOAT,  // SfrBulgeZ
+        H5T_NATIVE_FLOAT,  // DiskRadius
+        H5T_NATIVE_FLOAT,  // BulgeRadius
+        H5T_NATIVE_FLOAT,  // MergerBulgeRadius
+        H5T_NATIVE_FLOAT,  // InstabilityBulgeRadius
+        H5T_NATIVE_FLOAT,  // MergerBulgeMass
+        H5T_NATIVE_FLOAT,  // InstabilityBulgeMass
+        H5T_NATIVE_FLOAT,  // Cooling
+        H5T_NATIVE_FLOAT,  // Heating
+        H5T_NATIVE_FLOAT,  // BHSeedMass
+        H5T_NATIVE_FLOAT,  // QuasarModeBHaccretionMass
+        H5T_NATIVE_FLOAT,  // TimeOfLastMajorMerger
+        H5T_NATIVE_FLOAT,  // TimeOfLastMinorMerger
+        H5T_NATIVE_FLOAT,  // OutflowRate
+        H5T_NATIVE_FLOAT,  // infallMvir
+        H5T_NATIVE_FLOAT,  // infallVvir
+        H5T_NATIVE_FLOAT,  // infallVmax
+        H5T_NATIVE_FLOAT,  // infallStellarMass
+        H5T_NATIVE_INT,    // Regime
+        H5T_NATIVE_FLOAT,  // CGMgas
+        H5T_NATIVE_FLOAT,  // MetalsCGMgas
+        H5T_NATIVE_FLOAT,  // MassLoading
+        H5T_NATIVE_FLOAT,  // H2gas
+        H5T_NATIVE_FLOAT,  // H1gas
+        H5T_NATIVE_FLOAT,  // tcool
+        H5T_NATIVE_FLOAT,  // tff
+        H5T_NATIVE_FLOAT,  // tcool_over_tff
+        H5T_NATIVE_FLOAT,  // tdeplete
+        H5T_NATIVE_FLOAT,  // RcoolToRvir
+        H5T_NATIVE_FLOAT,  // TimeOfInfall
+        H5T_NATIVE_INT,    // FFBRegime
+        H5T_NATIVE_FLOAT,  // Concentration
+        H5T_NATIVE_FLOAT,  // mdot_cool
+        H5T_NATIVE_FLOAT,  // mdot_stream
+        H5T_NATIVE_FLOAT,  // ICS_disrupt
+        H5T_NATIVE_FLOAT,  // ICS_accrete
+        H5T_NATIVE_FLOAT,  // ICS_sum_mt
+        H5T_NATIVE_DOUBLE  // g_max
+    };
+    
 #endif
     for(int32_t i = 0; i < NUM_OUTPUT_FIELDS; i++) {
         memcpy(field_names[i], tmp_names[i], MAX_STRING_LEN);
@@ -1152,7 +1255,6 @@ int32_t prepare_galaxy_for_hdf5_output(const struct GALAXY *g, struct save_info 
     save_info->buffer_output_gals[output_snap_idx].tdeplete[gals_in_buffer] = g->tdeplete;
     save_info->buffer_output_gals[output_snap_idx].RcoolToRvir[gals_in_buffer] = g->RcoolToRvir;
     save_info->buffer_output_gals[output_snap_idx].g_max[gals_in_buffer] = g->g_max;
-    save_info->buffer_output_gals[output_snap_idx].BHMaxaccretionMass[gals_in_buffer] = g->BHMaxaccretionMass[g->SnapNum];
 
     float tmp_SfrDisk = 0.0;
     float tmp_SfrBulge = 0.0;
@@ -1212,6 +1314,7 @@ int32_t prepare_galaxy_for_hdf5_output(const struct GALAXY *g, struct save_info 
 
     for(int snap = 0; snap < run_params->SimMaxSnaps; snap++) {
         const int idx = gals_in_buffer * run_params->SimMaxSnaps + snap;
+        save_info->buffer_output_gals[output_snap_idx].BHMaxaccretionMass[idx] = g->BHMaxaccretionMass[snap];
         save_info->buffer_output_gals[output_snap_idx].RadioModeBHaccretionMass[idx] = g->RadioModeBHaccretionMass[snap];
         save_info->buffer_output_gals[output_snap_idx].InstabilityDrivenBHaccretionMass[idx] = g->InstabilityDrivenBHaccretionMass[snap];
         save_info->buffer_output_gals[output_snap_idx].MergerDrivenBHaccretionMass[idx] = g->MergerDrivenBHaccretionMass[snap];
@@ -1457,17 +1560,17 @@ int32_t trigger_buffer_write(const int32_t snap_idx, const int32_t num_to_write,
     EXTEND_AND_WRITE_GALAXY_DATASET(ICS_accrete);
     EXTEND_AND_WRITE_GALAXY_DATASET(ICS_sum_mt);
     EXTEND_AND_WRITE_GALAXY_DATASET(g_max);
-    EXTEND_AND_WRITE_GALAXY_DATASET(BHMaxaccretionMass);
 
-    const char *bh_field_names[4] = {"RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
-    float *bh_data_ptrs[4] = {
+    const char *bh_field_names[5] = {"BHMaxaccretionMass", "RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
+    float *bh_data_ptrs[5] = {
+        save_info->buffer_output_gals[snap_idx].BHMaxaccretionMass,
         save_info->buffer_output_gals[snap_idx].RadioModeBHaccretionMass,
         save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass,
         save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass,
         save_info->buffer_output_gals[snap_idx].BHMergerMass
     };
 
-    for(int cum_idx = 0; cum_idx < 4; cum_idx++) {
+    for(int cum_idx = 0; cum_idx < 5; cum_idx++) {
         char full_field_name[2*MAX_STRING_LEN];
         snprintf(full_field_name, 2*MAX_STRING_LEN - 1, "Snap_%d/%s",
                  run_params->ListOutputSnaps[snap_idx], bh_field_names[cum_idx]);

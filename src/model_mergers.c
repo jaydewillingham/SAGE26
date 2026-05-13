@@ -10,6 +10,7 @@
 #include "model_misc.h"
 #include "model_starformation_and_feedback.h"
 #include "model_disk_instability.h"
+#include "model_enhanced_bhphysics.h"
 
 double estimate_merging_time(const int sat_halo, const int mother_halo, const int ngal, struct halo_data *halos, struct GALAXY *galaxies, const struct params *run_params)
 {
@@ -236,6 +237,10 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         if(BHaccrete > galaxies[merger_centralgal].ColdGas) {
             BHaccrete = galaxies[merger_centralgal].ColdGas;
         }
+
+        eddington_limited_accretion_rate(BHaccrete, 0, galaxies[merger_centralgal].BlackHoleMass, ///// jayde note
+                                                       galaxies[merger_centralgal].SnapNum, run_params,
+                                                       galaxies[merger_centralgal].BHMaxaccretionMass);
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
         if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
