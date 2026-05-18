@@ -162,7 +162,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     // grow black hole through accretion from cold disk during mergers
     if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, 0, galaxies, run_params);// jayde note
+        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
     }
 
     // Determine which bulge component will receive burst stars
@@ -223,7 +223,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
 
 
-void grow_black_hole(const int merger_centralgal, const double mass_ratio, const int from_instability, struct GALAXY *galaxies, const struct params *run_params)
+void grow_black_hole(const int merger_centralgal, const double mass_ratio, const int from_instability, const double dt, struct GALAXY *galaxies, const struct params *run_params)
 {
     double BHaccrete, metallicity;
     const int snap = galaxies[merger_centralgal].SnapNum;
@@ -237,10 +237,14 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         if(BHaccrete > galaxies[merger_centralgal].ColdGas) {
             BHaccrete = galaxies[merger_centralgal].ColdGas;
         }
+        
+        double BHaccreterate=BHaccrete / dt;
 
-        eddington_limited_accretion_rate(BHaccrete, 0, galaxies[merger_centralgal].BlackHoleMass, ///// jayde note
-                                                       galaxies[merger_centralgal].SnapNum, run_params,
+        BHaccreterate=eddington_limited_accretion_rate(BHaccreterate, 0, galaxies[merger_centralgal].BlackHoleMass, // jayde note 
+                                                       galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
                                                        galaxies[merger_centralgal].BHMaxaccretionMass);
+
+        BHaccrete = BHaccreterate * dt;
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
         if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
@@ -256,7 +260,8 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
             galaxies[merger_centralgal].MetalsColdGas = 0.0;
         }
 
-        galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
+        //galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
+        
         if(from_instability) {
             galaxies[merger_centralgal].InstabilityDrivenBHaccretionMass[snap] += BHaccrete;
         } else {
