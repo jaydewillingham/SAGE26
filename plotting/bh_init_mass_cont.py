@@ -50,10 +50,10 @@ plt.rcParams['legend.fontsize'] = 14
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-MIN_STELLAR_MASS_LOG = 8.5
-MIN_HALO_MASS_LOG = 10.5
-MIN_Z0_BH_MASS = 1e4
-MONSTER_SEED_THRESHOLD = 1e9  # M_sun
+MIN_STELLAR_MASS_LOG = 5.0
+MIN_HALO_MASS_LOG = 10.0
+MIN_Z0_BH_MASS = 0 #1e1
+MONSTER_SEED_THRESHOLD = 1e14  # M_sun
 
 # ============================================================================
 # REDSHIFT MAPPING - MILLENNIUM SIMULATION
@@ -235,8 +235,8 @@ def create_2d_density_plot_combined(
     xlabel,
     ylabel,
     filename,
-    n_bins_x=30,
-    n_bins_y=30,
+    n_bins_x=50,
+    n_bins_y=50,
     total_passed=None
 ):
 
@@ -489,6 +489,25 @@ def main():
     
     ids, bh_mass, stellar_mass, mvir, bh_seed, channels, b_snaps, b_vals = read_data(file_list, snap_num, id_field, h_h)
 
+    # Raw BH-mass coverage before any sample cuts.
+    bh_mass_finite_mask = np.isfinite(bh_mass)
+    bh_mass_positive_mask = bh_mass_finite_mask & (bh_mass > 0)
+    print("\nTotal BH-mass diagnostic:")
+    print(f"  Total galaxies read: {len(bh_mass)}")
+    print(f"  Finite BH-mass values: {np.sum(bh_mass_finite_mask)}")
+    print(f"  Positive BH-mass values: {np.sum(bh_mass_positive_mask)}")
+    print(f"  Zero BH-mass values: {np.sum(bh_mass_finite_mask & (bh_mass == 0))}")
+    print(f"  Non-finite BH-mass values: {np.sum(~bh_mass_finite_mask)}")
+
+    bh_seed_finite_mask = np.isfinite(bh_seed)
+    bh_seed_positive_mask = bh_seed_finite_mask & (bh_seed > 0)
+    print("\nTotal BH-seed diagnostic:")
+    print(f"  Total galaxies read: {len(bh_seed)}")
+    print(f"  Finite BH-seed values: {np.sum(bh_seed_finite_mask)}")
+    print(f"  Positive BH-seed values: {np.sum(bh_seed_positive_mask)}")
+    print(f"  Zero BH-seed values: {np.sum(bh_seed_finite_mask & (bh_seed == 0))}")
+    print(f"  Non-finite BH-seed values: {np.sum(~bh_seed_finite_mask)}")
+
     # Filtering
     if args.no_cuts:
         mask = (bh_mass > 0)
@@ -620,7 +639,7 @@ def main():
                 r'$\log_{10}(M_{\rm seed} [M_{\odot}])$',
                 'Birth Redshift',
                 output_dir / 'bh_seed_2d_density_combined.png',
-                n_bins_x=25, n_bins_y=25,
+                n_bins_x=20, n_bins_y=20,
                 total_passed=total_passed
             )
         else:
