@@ -238,13 +238,32 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
             BHaccrete = galaxies[merger_centralgal].ColdGas;
         }
         
-        double BHaccreterate=BHaccrete / dt;
+        //double BHaccreterate= BHaccrete / (dt * (run_params->UnitTime_in_s / SEC_PER_YEAR));
+        //double BHaccreterate = BHaccrete / (0.5e9);
+        double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
+
+        // if (galaxies[merger_centralgal].BlackHoleMass > 0.0 ){
+        //     printf("DEBUG: BH accretion rate before Eddington limit: %g Msun/yr\n", BHaccreterate);
+        //     printf("DEBUG: Accretion time: %g yr\n", dt);
+        //     printf("DEBUG: BH mass before accretion: %g 1e10Msun\n", galaxies[merger_centralgal].BlackHoleMass);
+        //     printf("DEBUG: accretion rate after eddington 0: %g Msun/yr\n", eddington_limited_accretion_rate(BHaccreterate, 0, galaxies[merger_centralgal].BlackHoleMass, galaxies[merger_centralgal].SnapNum, run_params, galaxies[merger_centralgal].BHMaxaccretionMass, galaxies[merger_centralgal].BHEddingtonRateLimit));
+        //     printf("DEBUG: accretion rate after eddington 1: %g Msun/yr\n", eddington_limited_accretion_rate(BHaccreterate, 1, galaxies[merger_centralgal].BlackHoleMass, galaxies[merger_centralgal].SnapNum, run_params, galaxies[merger_centralgal].BHMaxaccretionMass, galaxies[merger_centralgal].BHEddingtonRateLimit));
+        // }
+
+        // printf("DEBUG: BH accretion %g Msun?\n", BHaccrete);
+        // printf("DEBUG: BH accretion before Eddington limit: %g Msun/yr\n", BHaccreterate);
+        // printf("DEBUG: Accretion time: %g yr\n", dt);
+        // printf("DEBUG: BH mass before accretion: %g 1e10Msun\n", galaxies[merger_centralgal].BlackHoleMass);
+        // printf("DEBUG: accretion rate after eddington 0: %g Msun/yr\n", eddington_limited_accretion_rate(BHaccreterate, 0, galaxies[merger_centralgal].BlackHoleMass, galaxies[merger_centralgal].SnapNum, run_params, galaxies[merger_centralgal].BHMaxaccretionMass, galaxies[merger_centralgal].BHEddingtonRateLimit));
+        // printf("DEBUG: accretion rate after eddington 1: %g Msun/yr\n", eddington_limited_accretion_rate(BHaccreterate, 1, galaxies[merger_centralgal].BlackHoleMass, galaxies[merger_centralgal].SnapNum, run_params, galaxies[merger_centralgal].BHMaxaccretionMass, galaxies[merger_centralgal].BHEddingtonRateLimit));
 
         BHaccreterate=eddington_limited_accretion_rate(BHaccreterate, 0, galaxies[merger_centralgal].BlackHoleMass, // jayde note 
                                                        galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
-                                                       galaxies[merger_centralgal].BHMaxaccretionMass);
+                                                       galaxies[merger_centralgal].BHMaxaccretionMass, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
-        BHaccrete = BHaccreterate * dt;
+        //BHaccrete = BHaccreterate * (dt * (run_params->UnitTime_in_s / SEC_PER_YEAR));
+        //BHaccrete = BHaccreterate * (0.5e9);
+        BHaccrete = BHaccreterate * (dt); // Msol/(yr?)
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
         if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {

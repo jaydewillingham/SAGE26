@@ -102,6 +102,7 @@ struct HDF5_GALAXY_OUTPUT
     float *MergerDrivenBHaccretionMass;
     float *BHMergerMass;
     float *BHMaxaccretionMass;
+    float *BHEddingtonRateLimit;
     float *TimeOfLastMajorMerger;
     float *TimeOfLastMinorMerger;
     float *OutflowRate;
