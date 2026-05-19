@@ -774,7 +774,7 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         if(AGNrate > EDDrate) {
             AGNrate = eddington_limited_accretion_rate(AGNrate, 1, galaxies[centralgal].BlackHoleMass,
                                                        galaxies[centralgal].SnapNum, run_params,
-                                                       galaxies[centralgal].BHMaxaccretionMass, galaxies[centralgal].BHEddingtonRateLimit);
+                                                       galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
         }
 
         // accreted mass onto black hole
@@ -876,7 +876,7 @@ double do_AGN_heating_cgm(double coolingGas, const int centralgal, const double 
         if(AGNrate > EDDrate) {
             AGNrate = eddington_limited_accretion_rate(AGNrate, 1, galaxies[centralgal].BlackHoleMass,
                                                        galaxies[centralgal].SnapNum, run_params,
-                                                       galaxies[centralgal].BHMaxaccretionMass, galaxies[centralgal].BHEddingtonRateLimit);
+                                                       galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
         }
 
         // accreted mass onto black hole
