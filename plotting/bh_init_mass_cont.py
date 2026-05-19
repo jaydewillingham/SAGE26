@@ -50,7 +50,7 @@ plt.rcParams['legend.fontsize'] = 14
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-MIN_STELLAR_MASS_LOG = 5.0
+MIN_STELLAR_MASS_LOG = 8.0
 MIN_HALO_MASS_LOG = 10.0
 MIN_Z0_BH_MASS = 0 #1e1
 MONSTER_SEED_THRESHOLD = 1e14  # M_sun
@@ -498,15 +498,6 @@ def main():
     print(f"  Positive BH-mass values: {np.sum(bh_mass_positive_mask)}")
     print(f"  Zero BH-mass values: {np.sum(bh_mass_finite_mask & (bh_mass == 0))}")
     print(f"  Non-finite BH-mass values: {np.sum(~bh_mass_finite_mask)}")
-
-    bh_seed_finite_mask = np.isfinite(bh_seed)
-    bh_seed_positive_mask = bh_seed_finite_mask & (bh_seed > 0)
-    print("\nTotal BH-seed diagnostic:")
-    print(f"  Total galaxies read: {len(bh_seed)}")
-    print(f"  Finite BH-seed values: {np.sum(bh_seed_finite_mask)}")
-    print(f"  Positive BH-seed values: {np.sum(bh_seed_positive_mask)}")
-    print(f"  Zero BH-seed values: {np.sum(bh_seed_finite_mask & (bh_seed == 0))}")
-    print(f"  Non-finite BH-seed values: {np.sum(~bh_seed_finite_mask)}")
 
     # Filtering
     if args.no_cuts:
