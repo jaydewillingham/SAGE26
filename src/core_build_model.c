@@ -19,6 +19,7 @@
 #include "model_reincorporation.h"
 #include "model_starformation_and_feedback.h"
 #include "model_cooling_heating.h"
+#include "model_enhanced_bhphysics.h"
 
 
 static int evolve_galaxies(const int halonr, const int ngal, int *numgals, int *maxgals, struct halo_data *halos,
@@ -206,6 +207,14 @@ int join_galaxies_of_progenitors(const int halonr, const int ngalstart, int *gal
                         galaxies[ngal].Vvir = get_virial_velocity(halonr, halos, run_params);  // use the maximum Vvir in model
                     }
                     galaxies[ngal].Mvir = get_virial_mass(halonr, halos, run_params);
+
+                    // Independent BH seeding: seed BH if halo grew above threshold and has no BH
+                    if(run_params->BlackHoleSeedingOn == 1 && galaxies[ngal].BlackHoleMass == 0.0 &&
+                       galaxies[ngal].Mvir > run_params->BHSeedMinHaloMass) {
+                        // --- ADD SEEDING PRESCRIPTION HERE --- Jayde
+                        //call from model_enhanced_bhphysics.c to determine seed mass
+                        //galaxies[ngal].BlackHoleMass = run_params->BHSeedMass;
+                    }
 
                     galaxies[ngal].Cooling = 0.0;
                     galaxies[ngal].Heating = 0.0;

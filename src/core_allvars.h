@@ -498,12 +498,17 @@ struct params
     double FeedbackEjectionEfficiency;
     double RadioModeEfficiency;
     double QuasarModeEfficiency;
-    double BlackHoleGrowthRate;
+    double BlackHoleGrowthRate; 
+    double BHSeedMinHaloMass; // Minimum halo mass for seeding in units of 10^10 Msun/h
     double Reionization_z0;
     double Reionization_zr;
     double ThresholdSatDisruption;
     double FractionDisruptedToICS;  // Fraction of disrupted satellite stellar mass that goes to ICS (rest goes to BCG)
     int32_t DynamicDisruptionSplit;  // 0: fixed fraction; 1: mass-ratio f_ICL = 1-(Msub/Mhost)^alpha; 2: concentration-weighted
+
+    int32_t BlackHoleSeedingOn; // 0: off, 1: Light, 2: Heavy
+    int32_t EddingtonLimitOn; // 0: off, 1: on
+
     double DisruptionSplitAlpha;     // Base exponent for mass-ratio dependence of ICL fraction (DynamicDisruptionSplit>=1)
     double DisruptionSplitCref;      // Reference concentration for concentration weighting (DynamicDisruptionSplit=2)
     double RedshiftPowerLawExponent;

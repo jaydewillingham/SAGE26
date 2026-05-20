@@ -13,9 +13,26 @@
 
 
 // Seeding Function for Black Holes to go here
+double seed_black_hole(const int p, const struct GALAXY *galaxies, const struct params *run_params)
+{
+    if(run_params->BlackHoleSeedingOn == 0) {
+        return 0.0; // No seeding
+    }
+
+    if(run_params->BlackHoleSeedingOn == 1) {
+        if(galaxies[p].Mvir > run_params->BHSeedMinHaloMass && galaxies[p].BlackHoleMass <= 0.0) {
+            return // Light BH Seeds
+        } else {
+            return 0.0;
+        }
+    }
+
+    if(run_params->BlackHoleSeedingOn == 2) {
+        //heavy seeds
+    }
 
 
-
+}
 // -------------------------------------------------------------------
 // Eddington Accretion Rate and Limiter Functions
 // -------------------------------------------------------------------
