@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #define  NDIM             3
-#define  STEPS            10         /* Number of integration intervals between two snapshots */
+#define  STEPS            10         /* Number of integration intervals between two snapshots - default 10*/ 
 #define  MAXGALFAC        1
 #define  ABSOLUTEMAXSNAPS 200  /* The largest number of snapshots for any simulation */
 
