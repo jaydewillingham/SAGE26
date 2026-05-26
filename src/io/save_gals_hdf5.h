@@ -95,6 +95,7 @@ struct HDF5_GALAXY_OUTPUT
     float *InstabilityBulgeMass;
     float *Cooling;
     float *Heating;
+    
     float *BHSeedMass;
     float *QuasarModeBHaccretionMass;
     float *RadioModeBHaccretionMass;
@@ -104,6 +105,8 @@ struct HDF5_GALAXY_OUTPUT
     float *BHMassatAccretion; 
     float *BHMaxaccretionRate;
     float *BHEddingtonRateLimit;
+    float *dt;
+
     float *TimeOfLastMajorMerger;
     float *TimeOfLastMinorMerger;
     float *OutflowRate;

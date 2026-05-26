@@ -289,8 +289,9 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
 
         }
 
-        const char *bh_names[7] = {"BHMassatAccretion", "BHEddingtonRateLimit", "BHMaxaccretionRate", "RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
-        const char *bh_descriptions[7] = {
+        const char *bh_names[8] = {"dt", "BHMassatAccretion", "BHEddingtonRateLimit", "BHMaxaccretionRate", "RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
+        const char *bh_descriptions[8] = {
+            "Time interval at each snapshot for diagnostics",
             "Black hole mass at time of accretion episode across snapshots",
             "Eddington rate limit for BH accretion across snapshot",
             "Maximum BH accretion rate across snapshots",
@@ -299,9 +300,9 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
             "Merger driven BH accretion across snapshots",
             "BH merger mass across snapshots"
         };
-        const char *bh_units[7] = {"1.0e10Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h"};
+        const char *bh_units[8] = {"code_time","1.0e10Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h", "1.0e10 Msun/h"};
 
-        for(int cum_idx = 0; cum_idx < 7; cum_idx++) {
+        for(int cum_idx = 0; cum_idx < 8; cum_idx++) {
             snprintf(full_field_name, 2*MAX_STRING_LEN - 1, "Snap_%d/%s", run_params->ListOutputSnaps[snap_idx], bh_names[cum_idx]);
 
             hsize_t dims_bh[2] = {0, (hsize_t)run_params->SimMaxSnaps};
@@ -501,6 +502,7 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
         MALLOC_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, ICS_sum_mt);
         MALLOC_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, g_max);
 
+        save_info->buffer_output_gals[snap_idx].dt = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].BHMassatAccretion = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].BHEddingtonRateLimit = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
         save_info->buffer_output_gals[snap_idx].BHMaxaccretionRate = malloc(save_info->buffer_size * run_params->SimMaxSnaps * sizeof(float));
@@ -515,7 +517,8 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
            save_info->buffer_output_gals[snap_idx].InstabilityDrivenBHaccretionMass == NULL ||
            save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass == NULL ||
            save_info->buffer_output_gals[snap_idx].BHMergerMass == NULL ||
-           save_info->buffer_output_gals[snap_idx].BHMassatAccretion == NULL) {
+           save_info->buffer_output_gals[snap_idx].BHMassatAccretion == NULL ||
+           save_info->buffer_output_gals[snap_idx].dt == NULL) {
             fprintf(stderr, "Could not allocate memory for BH history arrays (SimMaxSnaps=%d, buffer_size=%d)\n",
                 run_params->SimMaxSnaps, save_info->buffer_size);
             free(save_info->buffer_output_gals[snap_idx].BHEddingtonRateLimit);
@@ -525,6 +528,7 @@ int32_t initialize_hdf5_galaxy_files(const int filenr, struct save_info *save_in
             free(save_info->buffer_output_gals[snap_idx].MergerDrivenBHaccretionMass);
             free(save_info->buffer_output_gals[snap_idx].BHMergerMass);
             free(save_info->buffer_output_gals[snap_idx].BHMassatAccretion);
+            free(save_info->buffer_output_gals[snap_idx].dt);
             return MALLOC_FAILURE;
         }
         
@@ -850,6 +854,7 @@ int32_t finalize_hdf5_galaxy_files(const struct forest_info *forest_info, struct
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, ICS_sum_mt);
         FREE_GALAXY_OUTPUT_INNER_ARRAY(snap_idx, g_max);
 
+        free(save_info->buffer_output_gals[snap_idx].dt);
         free(save_info->buffer_output_gals[snap_idx].BHMassatAccretion);
         free(save_info->buffer_output_gals[snap_idx].BHEddingtonRateLimit);
         free(save_info->buffer_output_gals[snap_idx].BHMaxaccretionRate);
@@ -1329,6 +1334,7 @@ int32_t prepare_galaxy_for_hdf5_output(const struct GALAXY *g, struct save_info 
         save_info->buffer_output_gals[output_snap_idx].BHMaxaccretionRate[idx] = g->BHMaxaccretionRate[snap];
         save_info->buffer_output_gals[output_snap_idx].RadioModeBHaccretionMass[idx] = g->RadioModeBHaccretionMass[snap];
         save_info->buffer_output_gals[output_snap_idx].InstabilityDrivenBHaccretionMass[idx] = g->InstabilityDrivenBHaccretionMass[snap];
+        save_info->buffer_output_gals[output_snap_idx].dt[idx] = g->dt[snap];
         save_info->buffer_output_gals[output_snap_idx].MergerDrivenBHaccretionMass[idx] = g->MergerDrivenBHaccretionMass[snap];
         save_info->buffer_output_gals[output_snap_idx].BHMergerMass[idx] = g->BHMergerMass[snap];
     }
@@ -1573,8 +1579,9 @@ int32_t trigger_buffer_write(const int32_t snap_idx, const int32_t num_to_write,
     EXTEND_AND_WRITE_GALAXY_DATASET(ICS_sum_mt);
     EXTEND_AND_WRITE_GALAXY_DATASET(g_max);
 
-    const char *bh_field_names[7] = {"BHMassatAccretion", "BHEddingtonRateLimit", "BHMaxaccretionRate", "RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
-    float *bh_data_ptrs[7] = {
+    const char *bh_field_names[8] = {"dt", "BHMassatAccretion", "BHEddingtonRateLimit", "BHMaxaccretionRate", "RadioModeBHaccretionMass", "InstabilityDrivenBHaccretionMass", "MergerDrivenBHaccretionMass", "BHMergerMass"};
+    float *bh_data_ptrs[8] = {
+        save_info->buffer_output_gals[snap_idx].dt,
         save_info->buffer_output_gals[snap_idx].BHMassatAccretion,
         save_info->buffer_output_gals[snap_idx].BHEddingtonRateLimit,
         save_info->buffer_output_gals[snap_idx].BHMaxaccretionRate,

@@ -228,6 +228,10 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
     double BHaccrete, metallicity;
     const int snap = galaxies[merger_centralgal].SnapNum;
 
+    if(snap >= 0 && snap < ABSOLUTEMAXSNAPS) {
+        galaxies[merger_centralgal].dt[snap] = (float)dt;
+    }
+
 
     if(galaxies[merger_centralgal].ColdGas > 0.0) {
         BHaccrete = run_params->BlackHoleGrowthRate * mass_ratio /
@@ -237,8 +241,12 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         if(BHaccrete > galaxies[merger_centralgal].ColdGas) {
             BHaccrete = galaxies[merger_centralgal].ColdGas;
         }
+
+        // {
+        //     double dt_years = dt * run_params->UnitTime_in_s / SEC_PER_YEAR;
+        //     printf("DEBUG: dt = %.6e years (code-units dt = %.6e)\n", dt_years, dt);
+        // }
         
-        //printf("DEBUG: AGE and SNAPNUM: %f, %d\n", run_params->Age[snap], snap);
    
         double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
 

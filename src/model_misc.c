@@ -106,6 +106,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
         galaxies[p].BHMaxaccretionRate[snap] = 0.0;
         galaxies[p].BHEddingtonRateLimit[snap] = 0.0;
         galaxies[p].BHMassatAccretion[snap] = 0.0; 
+        galaxies[p].dt[snap] = 0.0;
     }
 
     for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {

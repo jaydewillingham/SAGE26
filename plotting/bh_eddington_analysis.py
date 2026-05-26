@@ -3,6 +3,8 @@
 Black hole Eddington limit analysis with:
 1. Time-series: Fraction of super-Eddington BHs vs redshift
 2. Distribution: Histogram of accretion rate ratios (where rate > Eddington limit)
+3. NEW: Summary statistics on dt parameter
+4. NEW: Accretion rate ratio vs dt scatter plot
 """
 import argparse
 import glob
@@ -52,6 +54,10 @@ plt.rcParams['legend.fontsize'] = 14
 MIN_STELLAR_MASS_LOG = 8.5
 MIN_HALO_MASS_LOG = 11
 MIN_Z0_BH_MASS = 1e4
+
+# Physical constants
+SEC_PER_YEAR = 365.25 * 24 * 3600
+UNIT_TIME_IN_S = 3.086e19  # 1 Gyr in seconds (Millennium default)
 
 # ============================================================================
 # REDSHIFT MAPPING - MILLENNIUM SIMULATION
@@ -128,6 +134,7 @@ def read_data(file_list, snap_num, id_field, h_h):
     all_bh_max_accretion_history = []  # Ngal x MAXSNAPS
     all_bh_eddington_rate_limit = []   # Ngal x MAXSNAPS
     all_bh_mass_at_accretion = []      # Ngal x MAXSNAPS
+    all_dt = []                         # Ngal x MAXSNAPS (NEW)
 
     seen_ids = set()
 
@@ -181,6 +188,23 @@ def read_data(file_list, snap_num, id_field, h_h):
             else:
                 bh_mass_at_accretion_raw = np.zeros_like(bh_max_accr_hist)
             
+            # Read dt as time-series (Ngal x MAXSNAPS) - NEW
+            if 'dt' in grp:
+                dt_raw = grp['dt'][:]
+                # dt doesn't get scaled by unit conversion
+                if dt_raw.ndim == 1:
+                    ngal = len(m_bh)
+                    if len(dt_raw) == ngal:
+                        dt_hist = dt_raw[mask].reshape(-1, 1)
+                    else:
+                        maxsnaps = len(dt_raw) // ngal
+                        dt_hist = dt_raw.reshape(ngal, maxsnaps)[mask]
+                else:
+                    dt_hist = dt_raw[mask]
+            else:
+                # Fallback: zeros
+                dt_hist = np.zeros_like(bh_max_accr_hist)
+            
             # Handle shape: if 1D, reshape to 2D
             if bh_eddington_raw.ndim == 1:
                 ngal = len(m_bh)
@@ -205,7 +229,7 @@ def read_data(file_list, snap_num, id_field, h_h):
             else:
                 bh_mass_at_accretion_hist = bh_mass_at_accretion_raw
             
-            # Ensure all three have the same shape
+            # Ensure all four have the same shape
             if bh_max_accr_hist.shape != bh_eddington_hist.shape:
                 print(f"WARNING: Shape mismatch in {f}")
                 print(f"  BHMaxaccretionRate shape: {bh_max_accr_hist.shape}")
@@ -225,6 +249,12 @@ def read_data(file_list, snap_num, id_field, h_h):
                 bh_mass_at_accretion_padded[:, :bh_mass_at_accretion_hist.shape[1]] = bh_mass_at_accretion_hist
                 bh_mass_at_accretion_hist = bh_mass_at_accretion_padded
 
+            if dt_hist.shape != bh_max_accr_hist.shape:
+                max_shape = bh_max_accr_hist.shape
+                dt_padded = np.zeros(max_shape)
+                dt_padded[:, :dt_hist.shape[1]] = dt_hist
+                dt_hist = dt_padded
+
             all_ids.append(gids[mask])
             all_bh_mass.append(m_bh)
             all_stellar_mass.append(m_stellar)
@@ -232,12 +262,70 @@ def read_data(file_list, snap_num, id_field, h_h):
             all_bh_max_accretion_history.append(bh_max_accr_hist)
             all_bh_eddington_rate_limit.append(bh_eddington_hist)
             all_bh_mass_at_accretion.append(bh_mass_at_accretion_hist)
+            all_dt.append(dt_hist)
 
     return (np.concatenate(all_ids), np.concatenate(all_bh_mass), 
             np.concatenate(all_stellar_mass), np.concatenate(all_mvir), 
             np.concatenate(all_bh_max_accretion_history),
             np.concatenate(all_bh_eddington_rate_limit),
-            np.concatenate(all_bh_mass_at_accretion))
+            np.concatenate(all_bh_mass_at_accretion),
+            np.concatenate(all_dt))
+
+def create_dt_summary_statistics(dt_data, plot_mask, unit_time_in_s=UNIT_TIME_IN_S):
+    """Generate summary statistics for dt parameter across snapshots.
+    
+    Args:
+        dt_data: Time-step data array (Ngal x MAXSNAPS) or (Ngal,)
+        plot_mask: Boolean mask for filtering
+        unit_time_in_s: Conversion factor from code units to seconds
+    
+    Returns:
+        dt_years: Array of dt values in years (non-zero only)
+        unit_time_in_s: The conversion factor used
+    """
+    
+    # Filter data
+    if dt_data.ndim == 2:
+        dt_filtered = dt_data[plot_mask, :]
+    else:
+        dt_filtered = dt_data[plot_mask]
+    
+    # Ensure 2D
+    if dt_filtered.ndim == 1:
+        dt_filtered = dt_filtered.reshape(-1, 1)
+    
+    # Flatten for statistics
+    dt_flat = dt_filtered.flatten()
+    
+    # Remove zero entries (inactive snapshots)
+    dt_nonzero = dt_flat[dt_flat > 0]
+    
+    # Convert to years
+    dt_years = dt_nonzero * unit_time_in_s / SEC_PER_YEAR
+    
+    # Statistics
+    if len(dt_years) > 0:
+        print("\n" + "=" * 70)
+        print("TIME-STEP (dt) SUMMARY STATISTICS")
+        print("=" * 70)
+        print(f"Number of active time-steps: {len(dt_years):,}")
+        print(f"Number of zero entries (inactive): {np.sum(dt_flat == 0):,}")
+        print(f"Fraction active: {len(dt_years) / len(dt_flat):.2%}")
+        print(f"\ndt values in years (non-zero only):")
+        print(f"  Min:    {np.min(dt_years):.6e} yr")
+        print(f"  Max:    {np.max(dt_years):.6e} yr")
+        print(f"  Mean:   {np.mean(dt_years):.6e} yr")
+        print(f"  Median: {np.median(dt_years):.6e} yr")
+        print(f"  Std:    {np.std(dt_years):.6e} yr")
+        print(f"  P25:    {np.percentile(dt_years, 25):.6e} yr")
+        print(f"  P75:    {np.percentile(dt_years, 75):.6e} yr")
+        print("=" * 70)
+        
+        return dt_years, unit_time_in_s
+    else:
+        print("\nWARNING: No valid dt data found.")
+        return None, None
+
 
 def create_eddington_redshift_plot(
     bh_max_accr_history,
@@ -606,6 +694,177 @@ def create_eddington_ratio_histogram(
     plt.close()
 
 
+def create_eddington_ratio_vs_dt_plot(
+    bh_max_accr_history,
+    bh_eddington_rate_limit,
+    dt_data,
+    plot_mask,
+    output_file,
+    unit_time_in_s=UNIT_TIME_IN_S
+):
+    """Plot: Accretion rate / Eddington limit ratio vs dt (time-step)"""
+    
+    from matplotlib.ticker import ScalarFormatter
+    
+    # Filter data
+    bh_max_accr = bh_max_accr_history[plot_mask]
+    bh_eddington = bh_eddington_rate_limit[plot_mask]
+    dt = dt_data[plot_mask]
+    
+    # Ensure 2D shape
+    if bh_max_accr.ndim == 1:
+        bh_max_accr = bh_max_accr.reshape(-1, 1)
+    if bh_eddington.ndim == 1:
+        bh_eddington = bh_eddington.reshape(-1, 1)
+    if dt.ndim == 1:
+        dt = dt.reshape(-1, 1)
+    
+    # Flatten arrays
+    max_accr_flat = bh_max_accr.flatten()
+    eddington_flat = bh_eddington.flatten()
+    dt_flat = dt.flatten()
+    
+    # Keep only cases where super-Eddington accretion occurred
+    exceeded_mask = (max_accr_flat > eddington_flat) & (eddington_flat > 0) & (dt_flat > 0)
+    
+    max_accr_exceeded = max_accr_flat[exceeded_mask]
+    eddington_exceeded = eddington_flat[exceeded_mask]
+    dt_exceeded = dt_flat[exceeded_mask]
+    
+    if len(max_accr_exceeded) == 0:
+        print("WARNING: No cases exceeding Eddington limit found for ratio vs dt plot.")
+        return
+    
+    # Compute ratios
+    ratios = max_accr_exceeded / eddington_exceeded
+    ratios = ratios[np.isfinite(ratios) & (ratios > 0)]
+    
+    # Convert dt to million years
+    dt_years = dt_exceeded[:len(ratios)] * unit_time_in_s / SEC_PER_YEAR
+    dt_million_years = dt_years / 1e6
+    
+    if len(ratios) == 0:
+        print("WARNING: No valid ratios for dt plot.")
+        return
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 7))
+    
+    # Convert ratios to log10 for plotting
+    log_ratios = np.log10(ratios)
+    
+    # Scatter plot (simple blue points, no density coloring)
+    ax.scatter(
+        dt_million_years,
+        log_ratios,
+        alpha=0.5,
+        s=20,
+        color='#1976D2',
+        edgecolors='none'
+    )
+    
+    # Add median line binned by dt
+    dt_sorted_idx = np.argsort(dt_million_years)
+    dt_sorted = dt_million_years[dt_sorted_idx]
+    log_ratios_sorted = log_ratios[dt_sorted_idx]
+    
+    n_bins_dt = min(20, len(dt_sorted) // 10)
+    if n_bins_dt > 2:
+        dt_bin_edges = np.percentile(dt_sorted, np.linspace(0, 100, n_bins_dt + 1))
+        dt_bin_centers = []
+        log_ratio_medians = []
+        
+        for i in range(n_bins_dt):
+            # For the last bin, use <= to include the maximum value
+            if i == n_bins_dt - 1:
+                mask_bin = (dt_sorted >= dt_bin_edges[i]) & (dt_sorted <= dt_bin_edges[i+1])
+            else:
+                mask_bin = (dt_sorted >= dt_bin_edges[i]) & (dt_sorted < dt_bin_edges[i+1])
+            if np.sum(mask_bin) > 0:
+                dt_bin_centers.append(np.median(dt_sorted[mask_bin]))
+                log_ratio_medians.append(np.median(log_ratios_sorted[mask_bin]))
+        
+        if len(dt_bin_centers) > 1:
+            ax.plot(
+                dt_bin_centers,
+                log_ratio_medians,
+                color='#D32F2F',
+                linewidth=2.5,
+                marker='o',
+                markersize=8,
+                label='Binned median',
+                zorder=10
+            )
+    
+    # Axis formatting
+    ax.set_xlabel('Time-step dt (million years)', fontsize=14)
+    ax.set_ylabel('log$_{10}$(Accretion Rate / Eddington Limit)', fontsize=14)
+    
+    # Linear x-scale, set y-axis limits to 0-3
+    ax.set_xscale('linear')
+    ax.set_ylim(0, 3)
+    
+    ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
+    ax.minorticks_on()
+    
+    # Statistics box
+    # stats_text = (
+    #     f'N = {len(ratios):,}\n'
+    #     f'Mean log₁₀(ratio) = {np.mean(log_ratios):.2f}\n'
+    #     f'Median log₁₀(ratio) = {np.median(log_ratios):.2f}\n'
+    #     f'Corr coeff = {np.corrcoef(dt_million_years, log_ratios)[0,1]:.3f}'
+    # )
+    
+    # ax.text(
+    #     0.05,
+    #     0.95,
+    #     stats_text,
+    #     transform=ax.transAxes,
+    #     verticalalignment='top',
+    #     horizontalalignment='left',
+    #     bbox=dict(
+    #         boxstyle='round',
+    #         facecolor='wheat',
+    #         alpha=0.8
+    #     ),
+    #     fontsize=11,
+    #     family='monospace'
+    # )
+    
+    ax.legend(loc='lower right', fontsize=11)
+    
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=140, bbox_inches='tight')
+    
+    print(f"✓ Eddington ratio vs dt plot saved to: {output_file}")
+    
+    # Print correlation analysis
+    print("\n" + "=" * 70)
+    print("EDDINGTON RATIO vs TIME-STEP (dt) ANALYSIS")
+    print("=" * 70)
+    print(f"Number of data points: {len(ratios):,}")
+    print(f"\nlog₁₀(Ratio) statistics:")
+    print(f"  Mean: {np.mean(log_ratios):.6f}")
+    print(f"  Median: {np.median(log_ratios):.6f}")
+    print(f"  Std Dev: {np.std(log_ratios):.6f}")
+    print(f"\ndt statistics (million years):")
+    print(f"  Min: {np.min(dt_million_years):.6e} Myr")
+    print(f"  Max: {np.max(dt_million_years):.6e} Myr")
+    print(f"  Mean: {np.mean(dt_million_years):.6e} Myr")
+    print(f"  Median: {np.median(dt_million_years):.6e} Myr")
+    print(f"\nCorrelation Analysis (linear dt vs log₁₀(ratio)):")
+    corr_coeff = np.corrcoef(dt_million_years, log_ratios)[0, 1]
+    print(f"  Pearson correlation: {corr_coeff:.4f}")
+    
+    # Linear fit in semi-log space (linear x, log y)
+    coeffs = np.polyfit(dt_million_years, log_ratios, 1)
+    print(f"  Linear fit: log₁₀(ratio) = {coeffs[0]:.6f} * dt + {coeffs[1]:.4f}")
+    print(f"  Slope: {coeffs[0]:.6f} per million years")
+    print("=" * 70)
+    
+    plt.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input-pattern', default='./output/millennium/model_*.hdf5')
@@ -615,6 +874,7 @@ def main():
                        help='Threshold for BHMaxaccretionRate to count as Eddington exceedance (default: >0)')
     parser.add_argument('--no-timeseries', action='store_true', help='Skip time-series plot')
     parser.add_argument('--no-ratio', action='store_true', help='Skip ratio histogram')
+    parser.add_argument('--no-dt-analysis', action='store_true', help='Skip dt analysis and ratio vs dt plot')
     args = parser.parse_args()
 
     file_list = sorted(glob.glob(args.input_pattern))
@@ -631,7 +891,7 @@ def main():
     print(f"Snapshot: {snap_num} | Redshift: {redshift:.3f} | Hubble_h: {h_h}")
     print("Reading data and tracking growth channels...")
     
-    ids, bh_mass, stellar_mass, mvir, bh_max_accr_hist, bh_eddington_hist, bh_mass_at_accretion = \
+    ids, bh_mass, stellar_mass, mvir, bh_max_accr_hist, bh_eddington_hist, bh_mass_at_accretion, dt_data = \
         read_data(file_list, snap_num, id_field, h_h)
 
     # ========================================================================
@@ -648,7 +908,7 @@ def main():
             if snap_key in hf:
                 grp = hf[snap_key]
                 print(f"\nBH-related fields in {snap_key}:")
-                bh_fields = sorted([k for k in grp.keys() if 'BH' in k or 'Black' in k])
+                bh_fields = sorted([k for k in grp.keys() if 'BH' in k or 'Black' in k or 'dt' in k])
                 for field in bh_fields:
                     data = grp[field][:]
                     flat = data.flatten()
@@ -747,6 +1007,13 @@ def main():
     output_dir.mkdir(exist_ok=True)
 
     # ========================================================================
+    # dt ANALYSIS
+    # ========================================================================
+    if not args.no_dt_analysis:
+        print("\n[1/4] Computing dt summary statistics...")
+        dt_years, unit_time = create_dt_summary_statistics(dt_data, plot_mask, UNIT_TIME_IN_S)
+
+    # ========================================================================
     # EDDINGTON LIMIT ANALYSIS
     # ========================================================================
     print("\n" + "="*70)
@@ -757,7 +1024,8 @@ def main():
     
     # Create time-series Eddington plot
     if not args.no_timeseries:
-        print("\n[1/2] Creating time-series plot...")
+        plot_num = 1 if args.no_dt_analysis else 2
+        print(f"\n[{plot_num}/4] Creating time-series plot...")
         create_eddington_redshift_plot(
             bh_max_accr_hist,
             bh_eddington_hist,
@@ -771,12 +1039,26 @@ def main():
     
     # Create ratio histogram plot
     if not args.no_ratio:
-        print("\n[2/2] Creating ratio histogram...")
+        plot_num = 2 if args.no_dt_analysis else 3
+        print(f"\n[{plot_num}/4] Creating ratio histogram...")
         create_eddington_ratio_histogram(
             bh_max_accr_hist,
             bh_eddington_hist,
             plot_mask,
             output_dir / 'bh_eddington_ratio_histogram.png'
+        )
+
+    # Create ratio vs dt plot
+    if not args.no_dt_analysis:
+        plot_num = 4
+        print(f"\n[{plot_num}/4] Creating ratio vs dt scatter plot...")
+        create_eddington_ratio_vs_dt_plot(
+            bh_max_accr_hist,
+            bh_eddington_hist,
+            dt_data,
+            plot_mask,
+            output_dir / 'bh_eddington_ratio_vs_dt.png',
+            unit_time_in_s=UNIT_TIME_IN_S
         )
 
     print("\n✓ All plots completed successfully!")

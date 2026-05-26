@@ -178,6 +178,8 @@ struct GALAXY
     float BHMaxaccretionRate[ABSOLUTEMAXSNAPS]; 
     float BHEddingtonRateLimit[ABSOLUTEMAXSNAPS];
     float BHMassatAccretion[ABSOLUTEMAXSNAPS]; // jayde note Track BH mass at time of each accretion episode for diagnostics
+
+    float dt[ABSOLUTEMAXSNAPS]; // jayde note Track time interval at each snapshot for diagnostics
     
     float TimeOfLastMajorMerger;
     float TimeOfLastMinorMerger;

@@ -779,6 +779,7 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
 
         // accreted mass onto black hole
         AGNaccreted = AGNrate * dt; 
+        
         //printf("dt: %.2e\n", dt);
 
         // cannot accrete more mass than is available!
