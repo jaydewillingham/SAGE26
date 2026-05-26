@@ -21,17 +21,17 @@ double seed_black_hole(const int p, const struct GALAXY *galaxies, const struct 
 
     if(run_params->BlackHoleSeedingOn == 1) {
         if(galaxies[p].Mvir > run_params->BHSeedMinHaloMass && galaxies[p].BlackHoleMass <= 0.0) {
-            return // Light BH Seeds
+            return 0.0; // Light BH Seeds
         } else {
             return 0.0;
-        }
+        }    
     }
 
     if(run_params->BlackHoleSeedingOn == 2) {
-        //heavy seeds
+       return 0.0; //heavy seeds
     }
 
-
+    return 0.0; // Default fallback
 }
 // -------------------------------------------------------------------
 // Eddington Accretion Rate and Limiter Functions
@@ -41,6 +41,12 @@ double eddington_accretion_rate(const double black_hole_mass, const struct param
 {
     // Eddington luminosity: L_Edd = 1.3e38 * M_BH (in Msun) erg/s
     // Convert to code units: divide by UnitEnergy_in_cgs and UnitTime_in_s
+
+    if(black_hole_mass <= 0.0) {
+        return 0.0; // No accretion for non-positive mass
+    }
+
+
     return (1.3e38 * black_hole_mass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (0.1 * 9e10);
 }
 
@@ -51,33 +57,34 @@ double eddington_limited_accretion_rate(double accretion_rate, int eddington_fla
 {
     double edd_rate = 0.0;
     double return_rate = accretion_rate;
+    const int valid_snap = (snapnum >= 0 && snapnum < ABSOLUTEMAXSNAPS);
+    const int is_seed_bh = (black_hole_mass <= 0.0);
 
-    if(snapnum < 0 || snapnum >= ABSOLUTEMAXSNAPS) {
-        // Don't print here as it's just an invalid call
-        return accretion_rate;
-    }
-    
     if (accretion_rate > 0.0) {
-        // Calculate Eddington accretion rate only if there's accretion
-        edd_rate = eddington_accretion_rate(black_hole_mass, run_params);
-    
-        // If accretion exceeds Eddington limit, store the original value
-        if (accretion_rate > edd_rate)
-        {
-            BHMaxaccretionRate[snapnum] = (float)accretion_rate;  // Store the unlimited accretion rate
-            BHEddingtonRateLimit[snapnum] = (float)edd_rate;  // Store the Eddington limit for this snapshot
+        // Store the unlimited rate for diagnostics before any limit is applied.
+        if(valid_snap) {
+            BHMaxaccretionRate[snapnum] = (float)accretion_rate;
+        }
 
-            
-            // If flag is set, prepare to return the limited rate
-            if (eddington_flag) {
-                return_rate = edd_rate;
+        if(is_seed_bh) {
+            // Seed black holes accrete without Eddington limiting.
+            if(valid_snap) {
+                BHEddingtonRateLimit[snapnum] = 0.0f;
             }
+            return accretion_rate;
+        }
+
+        // Calculate Eddington accretion rate 
+        edd_rate = eddington_accretion_rate(black_hole_mass, run_params);
+        if(valid_snap) {
+            BHEddingtonRateLimit[snapnum] = (float)edd_rate;
+        }
+
+        // If accretion exceeds Eddington limit and flag is set, apply the limit
+        if (accretion_rate > edd_rate && eddington_flag == 1) {
+            return_rate = edd_rate;
         }
     }
-
-    // Always print the state before returning
-   //printf("snapnum: %d, accretion_rate: %e, edd_rate: %e, black_hole_mass: %e, eddington_flag: %d, return_rate: %e\n",
-     //           snapnum, accretion_rate, edd_rate, black_hole_mass, eddington_flag, return_rate);
 
     return return_rate;
 }

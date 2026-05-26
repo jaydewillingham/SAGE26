@@ -16,7 +16,7 @@ from pathlib import Path
 # CONFIGURATION
 # ============================================================================
 MIN_STELLAR_MASS_LOG = 6.0
-MIN_HALO_MASS_LOG = 10.0
+MIN_HALO_MASS_LOG = 11.0
 MIN_Z0_BH_MASS = 0
 MONSTER_SEED_THRESHOLD = 1e14  # M_sun
 

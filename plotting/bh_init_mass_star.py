@@ -48,7 +48,7 @@ plt.rcParams['legend.fontsize'] = 14
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-MIN_HALO_MASS_LOG = 10.0
+MIN_HALO_MASS_LOG = 11.0
 MIN_Z0_BH_MASS = 1e1
 MONSTER_SEED_THRESHOLD = 1e14
 
