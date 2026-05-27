@@ -250,16 +250,18 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
    
         double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
 
-        BHaccreterate=eddington_limited_accretion_rate(BHaccreterate, 0, galaxies[merger_centralgal].BlackHoleMass, // jayde note 
+        int EddFlag = run_params->EddingtonLimitOn;
+
+        BHaccreterate=eddington_limited_accretion_rate(BHaccreterate, EddFlag, galaxies[merger_centralgal].BlackHoleMass, // jayde note 
                                                        galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
                                                        galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
         BHaccrete = BHaccreterate * (dt);
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
-        if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
-            galaxies[merger_centralgal].BHSeedMass = BHaccrete;
-        }
+        //if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
+        //    galaxies[merger_centralgal].BHSeedMass = BHaccrete;
+        //}
 
         metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas, galaxies[merger_centralgal].MetalsColdGas);
         galaxies[merger_centralgal].BHMassatAccretion[snap] = galaxies[merger_centralgal].BlackHoleMass;

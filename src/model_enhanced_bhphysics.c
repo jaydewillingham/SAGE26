@@ -49,13 +49,13 @@ double seed_black_hole(const int p, const struct GALAXY *galaxies, const struct 
             
             seed_mass = pow(M_min_pow + u * (M_max_pow - M_min_pow), exp);
 
-            return seed_mass; // Light BH Seeds
+            return seed_mass / (1.0e10 / run_params->Hubble_h); // Convert to code units
         } 
     }
 
     if(run_params->BlackHoleSeedingOn == 2) {
         if(galaxies[p].Mvir > run_params->BHSeedMinHaloMass && galaxies[p].BlackHoleMass <= 0.0) {
-            return 1.0e5; // Heavy BH Seeds: constant 10^5 solar masses
+            return (1.0e5) / (1.0e10 / run_params->Hubble_h); // Heavy BH Seeds: constant 10^5 solar masses in code units
         }
     }
 

@@ -56,6 +56,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].HotGas = 0.0;
     galaxies[p].EjectedMass = 0.0;
     galaxies[p].BlackHoleMass = 0.0;
+    galaxies[p].BHSeedMass = 0.0;
 
     // Independent BH seeding: seed BH if halo exceeds mass threshold and has no BH
     // BlackHoleSeedingOn == 0: no seeding (natural evolution)
@@ -113,7 +114,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].r_heat = 0.0;
     galaxies[p].QuasarModeBHaccretionMass = 0.0;
 
-    galaxies[p].BHSeedMass = 0.0;
+    
     for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
         galaxies[p].BHMaxaccretionRate[snap] = 0.0;
         galaxies[p].BHEddingtonRateLimit[snap] = 0.0;

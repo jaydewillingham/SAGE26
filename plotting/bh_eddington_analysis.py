@@ -802,7 +802,7 @@ def create_eddington_ratio_vs_dt_plot(
     
     # Linear x-scale, set y-axis limits to 0-3
     ax.set_xscale('linear')
-    ax.set_ylim(0, 3)
+    ax.set_ylim(0, 7)
     
     ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
     ax.minorticks_on()
@@ -1062,6 +1062,9 @@ def main():
         )
 
     print("\n✓ All plots completed successfully!")
+
+
+    
 
 if __name__ == "__main__":
     main()
