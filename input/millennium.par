@@ -65,8 +65,8 @@ TrackICSAssembly            1   %0: switch off; 1: track ICS_disrupt and ICS_acc
 
 DynamicDisruptionSplit      2   %0: fixed fraction; 1: mass-ratio only; 2: concentration-weighted
 
-BlackHoleSeedingOn          2   %0: No forced seeding; 1: Light Seeding; 2: Heavy Seeding
-EddingtonLimitOn            1   %0: No forced limit; 1: All accretion EddLimited
+BlackHoleSeedingOn          0   %0: No forced seeding; 1: Light Seeding; 2: Heavy Seeding
+EddingtonLimitOn            0   %0: No forced limit; 1: All accretion EddLimited
 
 
 %------------------------------------------

@@ -68,6 +68,28 @@ double seed_black_hole(const int p, const struct GALAXY *galaxies, const struct 
 // Eddington Accretion Rate and Limiter Functions
 // -------------------------------------------------------------------
 
+double dynamical_time(const double r_bulge, const double M_bulge_encl, const struct params *run_params)
+{
+    // Dynamical time calculation: t_dyn ~ r / v_circular
+    // where v_circular = sqrt(GM/r)
+    
+    // All inputs in code units:
+    // r_bulge: kpc/h
+    // M_bulge_encl: 10^10 M_sun/h
+    // run_params->G: code units
+    
+    double rscale = r_bulge / 1.67;
+    double vbulge = sqrt(run_params->G * M_bulge_encl / rscale);  // velocity in code units
+                                   // length in code units
+    double t_dyn = rscale / vbulge;                               // time in code units
+    
+    // Convert to Megayears for output
+    double t_dyn_myr = t_dyn * run_params->UnitTime_in_Megayears;
+    //printf("t_dyn = %g Myr (code units: %g)\n", t_dyn_myr, t_dyn);
+
+    return t_dyn;  // Return in code units for internal use
+}
+
 double eddington_accretion_rate(const double black_hole_mass, const struct params *run_params)
 {
     // Eddington luminosity: L_Edd = 1.3e38 * M_BH (in Msun) erg/s

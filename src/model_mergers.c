@@ -160,10 +160,10 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
 
-    // grow black hole through accretion from cold disk during mergers
-    if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
-    }
+    // // grow black hole through accretion from cold disk during mergers
+    // if(run_params->AGNrecipeOn) {
+    //     grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
+    // }
 
     // Determine which bulge component will receive burst stars
     // This must be decided BEFORE the starburst
@@ -181,6 +181,11 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
             // Spheroid-dominated: burst goes to merger bulge
             burst_to_merger_bulge = 1;
         }
+    }
+
+    // grow black hole through accretion from cold disk during mergers
+    if(run_params->AGNrecipeOn) {
+        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
     }
 
     // starburst recipe - now tracks which bulge component receives the stars
@@ -241,14 +246,17 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         if(BHaccrete > galaxies[merger_centralgal].ColdGas) {
             BHaccrete = galaxies[merger_centralgal].ColdGas;
         }
-
-        // {
-        //     double dt_years = dt * run_params->UnitTime_in_s / SEC_PER_YEAR;
-        //     printf("DEBUG: dt = %.6e years (code-units dt = %.6e)\n", dt_years, dt);
-        // }
         
+        //double bulge_mass = galaxies[merger_centralgal].StellarMass; 
+        //double bulge_mass = galaxies[merger_centralgal].BulgeMass;
+        //double bulge_mass = galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas; 
+        //double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, bulge_mass, run_params);
+
+        //printf("DEBUG: Bulge Radius = %g kpc/h, Bulge Mass = %g (10^10 Msun/h), Dynamical Time = %g Myr\n", 
+        //       galaxies[merger_centralgal].BulgeRadius, bulge_mass, tdyn * run_params->UnitTime_in_Megayears);
    
         double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
+        //double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
 
         int EddFlag = run_params->EddingtonLimitOn;
 
@@ -256,6 +264,7 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
                                                        galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
                                                        galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
+        //BHaccrete = BHaccreterate * tdyn;
         BHaccrete = BHaccreterate * (dt);
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
