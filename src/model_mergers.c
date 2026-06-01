@@ -160,6 +160,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
 
+    // OLD LOCATION - Need to move this after we have the final merged galaxy properties for accurate radius calculation
     // // grow black hole through accretion from cold disk during mergers
     // if(run_params->AGNrecipeOn) {
     //     grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
@@ -183,20 +184,16 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
         }
     }
 
-    // grow black hole through accretion from cold disk during mergers
-    if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
-    }
-
     // starburst recipe - now tracks which bulge component receives the stars
     collisional_starburst_recipe(mass_ratio, merger_centralgal, centralgal, time, dt, halonr, 
                                  0, step, burst_to_merger_bulge, old_disk_radius, 
                                  galaxies, run_params);
 
+
     // 1. Calculate the merger remnant radius via Energy Conservation
     // We do this AFTER the starburst so the energy budget includes burst stars
     double new_merger_radius = calculate_merger_remnant_radius(&galaxies[merger_centralgal], &galaxies[p]);
-
+    
     if(mass_ratio > run_params->ThreshMajorMerger) {
         // CASE 1: MAJOR MERGER (Section 5.2.3)
         // Destroys disc, creates pure merger-driven bulge
@@ -209,6 +206,7 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
         galaxies[merger_centralgal].TimeOfLastMajorMerger = time;
         galaxies[p].mergeType = 2; 
 
+
     } else {
         // CASE 2: MINOR MERGER
         galaxies[p].mergeType = 1;
@@ -218,12 +216,20 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
             // Minor merger on DISC (Section 5.2.1)
             // Radius already updated in add_galaxies_together and collisional_starburst_recipe
             // Do nothing here
+            //printf("Bulge Radius: %g\n", galaxies[merger_centralgal].BulgeRadius);
         } else {
             // Minor merger on SPHEROID (Section 5.2.3)
             // Update merger bulge radius with energy conservation
             galaxies[merger_centralgal].MergerBulgeRadius = new_merger_radius;
+            
         }
     }
+
+    // grow black hole through accretion from cold disk during mergers
+    if(run_params->AGNrecipeOn) {
+        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
+    }
+
 }
 
 
@@ -250,13 +256,16 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         //double bulge_mass = galaxies[merger_centralgal].StellarMass; 
         //double bulge_mass = galaxies[merger_centralgal].BulgeMass;
         //double bulge_mass = galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas; 
-        //double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, bulge_mass, run_params);
+        double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas, run_params);
 
         //printf("DEBUG: Bulge Radius = %g kpc/h, Bulge Mass = %g (10^10 Msun/h), Dynamical Time = %g Myr\n", 
-        //       galaxies[merger_centralgal].BulgeRadius, bulge_mass, tdyn * run_params->UnitTime_in_Megayears);
+        //       galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].BulgeMass, tdyn * run_params->UnitTime_in_Megayears);
+
    
-        double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
-        //double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
+        //double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
+        double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
+
+        //printf("rbulge before eddington called = %g\n", galaxies[merger_centralgal].BulgeRadius);
 
         int EddFlag = run_params->EddingtonLimitOn;
 
@@ -264,8 +273,8 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
                                                        galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
                                                        galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
-        //BHaccrete = BHaccreterate * tdyn;
-        BHaccrete = BHaccreterate * (dt);
+        BHaccrete = BHaccreterate * tdyn;
+        //BHaccrete = BHaccreterate * (dt);
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
         //if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
@@ -277,6 +286,8 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         galaxies[merger_centralgal].BlackHoleMass += BHaccrete;
         galaxies[merger_centralgal].ColdGas -= BHaccrete;
         galaxies[merger_centralgal].MetalsColdGas -= metallicity * BHaccrete;
+
+
         /* BUG FIX: Ensure metals don't go negative due to numerical precision */
         if(galaxies[merger_centralgal].MetalsColdGas < 0.0) {
             galaxies[merger_centralgal].MetalsColdGas = 0.0;
@@ -461,8 +472,6 @@ void make_bulge_from_burst(const int p, struct GALAXY *galaxies)
         galaxies[p].SfrDiskColdGasMetals[step] = 0.0;
     }
 }
-
-
 
 void collisional_starburst_recipe(const double mass_ratio, const int merger_centralgal, const int centralgal,
                                   const double time, const double dt, const int halonr, const int mode, const int step,

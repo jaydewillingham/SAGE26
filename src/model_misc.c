@@ -337,6 +337,7 @@ void update_instability_bulge_radius(const int p, const double delta_mass,
     }
     
     galaxies[p].InstabilityBulgeRadius = R_new;
+    galaxies[p].BulgeRadius = R_new;  // Update overall bulge radius to reflect change JAYDE NOTE
 }
 
 
