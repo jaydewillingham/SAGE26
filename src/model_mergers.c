@@ -252,13 +252,22 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         //double bulge_mass = galaxies[merger_centralgal].StellarMass; 
         //double bulge_mass = galaxies[merger_centralgal].BulgeMass;
         //double bulge_mass = galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas; 
-        double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas, run_params);
 
         //printf("DEBUG: Bulge Radius = %g kpc/h, Bulge Mass = %g (10^10 Msun/h), Dynamical Time = %g Myr\n", 
         //       galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].BulgeMass, tdyn * run_params->UnitTime_in_Megayears);
+        double accretiontime = dt;
 
-   
-        double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
+        if(run_params->AGNDynamicAccretionOn) {
+            double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas, run_params);
+            accretiontime = tdyn;
+            //fprintf(stderr, "DEBUG [snap %d]: Using tdyn (%.6e) for BH accretion, ratio tdyn/dt = %.3f\n", galaxies[merger_centralgal].SnapNum, tdyn, tdyn/dt);
+        } else {
+            accretiontime = dt;
+            double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas, run_params);
+            //fprintf(stderr, "DEBUG [snap %d]: Using dt (%.6e), tdyn would be (%.6e), ratio tdyn/dt = %.3f\n", galaxies[merger_centralgal].SnapNum, dt, tdyn, tdyn/dt);
+        }
+
+        double BHaccreterate = (BHaccrete) / accretiontime; //  Msol/(yr?)
         //double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
 
         int EddFlag = run_params->EddingtonLimitOn;
@@ -268,7 +277,7 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
                                                        galaxies[merger_centralgal].BHAccretionType, galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
         //BHaccrete = BHaccreterate * tdyn;
-        BHaccrete = BHaccreterate * (dt);
+        BHaccrete = BHaccreterate * accretiontime;
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
         //if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {

@@ -92,15 +92,18 @@ double dynamical_time(const double r_bulge, const double M_bulge_encl, const str
     double t_dyn_myr = t_dyn * run_params->UnitTime_in_Megayears;
 
     if(isnan(t_dyn) || t_dyn <= 0.0) {
-        // Handle NaN or non-positive values gracefully
-        t_dyn = 0.001; // Default to 0.001 code units (can be adjusted as needed)
+        // Fallback: compute from disk scale radius instead
+        double r_disk = r_bulge; // or use DiskScaleRadius if available
+        if(r_disk <= 0.0) r_disk = 1.0; // Minimum 1 kpc
+        t_dyn = r_disk / sqrt(run_params->G * M_bulge_encl / r_disk);
+        if(t_dyn <= 0.0 || isnan(t_dyn)) t_dyn = 1.0; // Final fallback
         
-        if(r_bulge<=0 && M_bulge_encl>0){
-        FILE *fp = fopen("tdynbad.txt", "a");
-        if(fp != NULL) {
-            fprintf(fp, "%g\n", t_dyn);
-            fclose(fp);
-        }}
+        // if(r_bulge<=0 && M_bulge_encl>0){
+        // FILE *fp = fopen("tdynbad.txt", "a");
+        // if(fp != NULL) {
+        //     fprintf(fp, "%g\n", t_dyn);
+        //     fclose(fp);
+        // }}
     }
     // else {
 

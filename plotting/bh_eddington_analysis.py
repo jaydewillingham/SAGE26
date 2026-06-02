@@ -743,8 +743,8 @@ def create_accretion_rate_function(
     
     categories = [
         {'data': log_lam, 'label': 'Total', 'color': '#1976D2', 'z': 3, 'alpha': 0.10, 'lw': 2.5},          # Blue
-        {'data': log_lam[mask_quasar], 'label': 'Quasar Mode (1)', 'color': '#D32F2F', 'z': 4, 'alpha': 0.15, 'lw': 2.0}, # Red
-        {'data': log_lam[mask_radio], 'label': 'Radio Mode (0)', 'color': '#388E3C', 'z': 5, 'alpha': 0.15, 'lw': 2.0},   # Green
+        {'data': log_lam[mask_quasar], 'label': 'Quasar Mode', 'color': '#D32F2F', 'z': 4, 'alpha': 0.15, 'lw': 2.0}, # Red
+        {'data': log_lam[mask_radio], 'label': 'Radio Mode', 'color': '#388E3C', 'z': 5, 'alpha': 0.15, 'lw': 2.0},   # Green
     ]
     
     plot_data_store = []
@@ -830,7 +830,7 @@ def create_accretion_rate_function(
 
     ax.axvline(
         x=0.0, color='#000000', linestyle='--', linewidth=1.5, alpha=0.75,
-        label=r'Eddington limit ($\lambda = 1$)', zorder=2,
+        #label=r'Eddington limit ($\lambda = 1$)', zorder=2,
     )
 
     ax.set_xlabel(
@@ -857,8 +857,8 @@ def create_accretion_rate_function(
     print("ACCRETION RATE FUNCTION SUMMARY")
     print("=" * 70)
     print(f"  Valid accretion events total:        {n_total:,}")
-    print(f"    - Quasar Mode (Type 1):            {n_quasar:,}")
-    print(f"    - Radio Mode (Type 0):             {n_radio:,}")
+    print(f"    - Quasar Mode:                     {n_quasar:,}")
+    print(f"    - Radio Mode:                      {n_radio:,}")
     print(f"  Median log10(lambda):                {np.median(log_lam):.4f}")
     print(f"  Mean   log10(lambda):                {np.mean(log_lam):.4f}")
     print(f"  log10(lambda) range (full):          [{log_lam.min():.2f}, {log_lam.max():.2f}]")

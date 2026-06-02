@@ -1599,7 +1599,7 @@ int32_t trigger_buffer_write(const int32_t snap_idx, const int32_t num_to_write,
         save_info->buffer_output_gals[snap_idx].BHMergerMass
     };
 
-    for(int cum_idx = 0; cum_idx < 8; cum_idx++) {
+    for(int cum_idx = 0; cum_idx < 9; cum_idx++) {
         char full_field_name[2*MAX_STRING_LEN];
         snprintf(full_field_name, 2*MAX_STRING_LEN - 1, "Snap_%d/%s",
                  run_params->ListOutputSnaps[snap_idx], bh_field_names[cum_idx]);

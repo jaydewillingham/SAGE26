@@ -512,6 +512,7 @@ struct params
 
     int32_t BlackHoleSeedingOn; // 0: off, 1: Light, 2: Heavy
     int32_t EddingtonLimitOn; // 0: off, 1: on
+    int32_t AGNDynamicAccretionOn; // 0: off, 1: on
 
     double DisruptionSplitAlpha;     // Base exponent for mass-ratio dependence of ICL fraction (DynamicDisruptionSplit>=1)
     double DisruptionSplitCref;      // Reference concentration for concentration weighting (DynamicDisruptionSplit=2)
