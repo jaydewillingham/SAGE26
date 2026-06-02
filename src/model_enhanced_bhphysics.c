@@ -88,23 +88,32 @@ double dynamical_time(const double r_bulge, const double M_bulge_encl, const str
     //    t_dyn = 1.0; // Default to 1 code unit (can be adjusted as needed)
     //}
 
+    // Convert to Megayears for output
+    double t_dyn_myr = t_dyn * run_params->UnitTime_in_Megayears;
+
     if(isnan(t_dyn) || t_dyn <= 0.0) {
         // Handle NaN or non-positive values gracefully
         t_dyn = 0.001; // Default to 0.001 code units (can be adjusted as needed)
         
-
-        FILE *fp = fopen("tdynbad.txt", "a");
-        if(fp != NULL) {
-            fprintf(fp, "%g\n", t_dyn);
-            fclose(fp);
-        }
-
+        // if(r_bulge<=0 && M_bulge_encl>0){
+        // FILE *fp = fopen("tdynbad.txt", "a");
+        // if(fp != NULL) {
+        //     fprintf(fp, "%g\n", t_dyn);
+        //     fclose(fp);
+        // }}
     }
+    // else {
+
+    //     FILE *fp = fopen("tdyngood_end_BulgeMass.txt", "a");
+    //         if(fp != NULL) {
+    //             fprintf(fp, "%g\n", t_dyn_myr);
+    //             fclose(fp);
+    //         }
+    //     }
 
     
 
-    // Convert to Megayears for output
-    double t_dyn_myr = t_dyn * run_params->UnitTime_in_Megayears;
+    
     //printf("t_dyn = %g Myr (code units: %g)\n", t_dyn_myr, t_dyn);
 
     // Write to file for statistical analysis

@@ -105,9 +105,7 @@ void init_galaxy(const int p, const int halonr, int *galaxycounter, const struct
     galaxies[p].ICS_sum_mt = 0.0;
 
     galaxies[p].DiskScaleRadius = get_disk_radius(halonr, p, halos, galaxies);
-    galaxies[p].BulgeRadius = get_bulge_radius(p, galaxies, run_params);
-    galaxies[p].MergerBulgeRadius = get_bulge_radius(p, galaxies, run_params);
-    galaxies[p].InstabilityBulgeRadius = get_bulge_radius(p, galaxies, run_params);
+    get_bulge_radius(p, galaxies, run_params);
     galaxies[p].MergTime = 999.9f;
     galaxies[p].Cooling = 0.0;
     galaxies[p].Heating = 0.0;
@@ -299,7 +297,7 @@ double get_bulge_radius(const int p, struct GALAXY *galaxies, const struct param
 }
 
 
-void update_instability_bulge_radius(const int p, const double delta_mass, 
+void update_instability_bulge_radius(const int p, const double delta_mass,
                                      const double old_disk_radius,
                                      struct GALAXY *galaxies, const struct params *run_params)
 {
@@ -308,22 +306,22 @@ void update_instability_bulge_radius(const int p, const double delta_mass,
     //
     // IMPORTANT: old_disk_radius should be the disc radius BEFORE the instability event
     // This ensures we use the correct R_D value as prescribed in the paper
-    
+
     if(run_params->BulgeSizeOn != 3) return;  // Only for Tonini mode
     if(delta_mass <= 0.0) return;
-    
+
     const double h = run_params->Hubble_h;
     const double M_old = galaxies[p].InstabilityBulgeMass - delta_mass;  // Mass before addition
     const double R_old = galaxies[p].InstabilityBulgeRadius;
-    
+
     // Use the OLD disc radius (pre-instability) passed as parameter
     // Convert to kpc for calculation
     const double R_disc_kpc = old_disk_radius * 1.0e3 / h;
-    
+
     // New mass contribution scales with 0.2 * R_disc (Tonini+2016 eq. 15)
     const double R_new_contribution_kpc = 0.2 * R_disc_kpc;
     const double R_new_contribution = R_new_contribution_kpc * 1.0e-3 * h;  // to Mpc/h
-    
+
     double R_new;
     if(M_old > 0.0 && R_old > 0.0) {
         // Incremental update (equation 15)
@@ -335,9 +333,9 @@ void update_instability_bulge_radius(const int p, const double delta_mass,
         // First mass addition: initialize with 0.2 * R_disc
         R_new = R_new_contribution;
     }
-    
+
     galaxies[p].InstabilityBulgeRadius = R_new;
-    galaxies[p].BulgeRadius = R_new;  // Update overall bulge radius to reflect change JAYDE NOTE
+    get_bulge_radius(p, galaxies, run_params);
 }
 
 

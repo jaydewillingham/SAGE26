@@ -160,7 +160,6 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
 
-    // OLD LOCATION - Need to move this after we have the final merged galaxy properties for accurate radius calculation
     // // grow black hole through accretion from cold disk during mergers
     // if(run_params->AGNrecipeOn) {
     //     grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
@@ -189,11 +188,10 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
                                  0, step, burst_to_merger_bulge, old_disk_radius, 
                                  galaxies, run_params);
 
-
     // 1. Calculate the merger remnant radius via Energy Conservation
     // We do this AFTER the starburst so the energy budget includes burst stars
     double new_merger_radius = calculate_merger_remnant_radius(&galaxies[merger_centralgal], &galaxies[p]);
-    
+
     if(mass_ratio > run_params->ThreshMajorMerger) {
         // CASE 1: MAJOR MERGER (Section 5.2.3)
         // Destroys disc, creates pure merger-driven bulge
@@ -206,9 +204,8 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
         galaxies[merger_centralgal].TimeOfLastMajorMerger = time;
         galaxies[p].mergeType = 2; 
 
-
     } else {
-        // CASE 2: MINOR MERGER
+       // CASE 2: MINOR MERGER
         galaxies[p].mergeType = 1;
         galaxies[merger_centralgal].TimeOfLastMinorMerger = time;
 
@@ -216,15 +213,14 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
             // Minor merger on DISC (Section 5.2.1)
             // Radius already updated in add_galaxies_together and collisional_starburst_recipe
             // Do nothing here
-            //printf("Bulge Radius: %g\n", galaxies[merger_centralgal].BulgeRadius);
         } else {
             // Minor merger on SPHEROID (Section 5.2.3)
             // Update merger bulge radius with energy conservation
             galaxies[merger_centralgal].MergerBulgeRadius = new_merger_radius;
-            
+            get_bulge_radius(merger_centralgal, galaxies, run_params);
         }
     }
-
+    
     // grow black hole through accretion from cold disk during mergers
     if(run_params->AGNrecipeOn) {
         grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
@@ -262,10 +258,8 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         //       galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].BulgeMass, tdyn * run_params->UnitTime_in_Megayears);
 
    
-        //double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
-        double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
-
-        //printf("rbulge before eddington called = %g\n", galaxies[merger_centralgal].BulgeRadius);
+        double BHaccreterate = (BHaccrete) / dt; //  Msol/(yr?)
+        //double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
 
         int EddFlag = run_params->EddingtonLimitOn;
 
@@ -273,8 +267,8 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
                                                        galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
                                                        galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
-        BHaccrete = BHaccreterate * tdyn;
-        //BHaccrete = BHaccreterate * (dt);
+        //BHaccrete = BHaccreterate * tdyn;
+        BHaccrete = BHaccreterate * (dt);
 
         //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
         //if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
@@ -795,6 +789,7 @@ void disrupt_satellite_to_ICS(const int centralgal, const int gal, const double 
     galaxies[centralgal].BulgeMass += frac_to_BCG * galaxies[gal].StellarMass;
     galaxies[centralgal].MetalsBulgeMass += frac_to_BCG * galaxies[gal].MetalsStellarMass;
     galaxies[centralgal].MergerBulgeMass += frac_to_BCG * galaxies[gal].StellarMass;  // Track as merger-driven
+    get_bulge_radius(centralgal, galaxies, run_params);
 
     // Transfer star formation history from disrupted satellite to central
     // - Fraction going to BCG bulge: track in SFHMassBulge (stellar ages)

@@ -270,7 +270,7 @@ def main():
 
             # Diagnostic print for one specific snap (z ~ 0.5) to see if values are 0
             if sn == all_snaps[-5] and i == 1:
-                print(f"  [Diag Z={z:.2f} Bin 2] Medians -> BH: {np.median(bh_t):.1e}, RM: {np.median(rm_t):.1e}")
+                print(f"  [Diag Z={z:.2f} Bin 2] Medians -> BH: {np.median(bh_t):.1e}, MD: {np.median(md_t):.1e}, ID: {np.median(id_t):.1e}, RM: {np.median(rm_t):.1e}, BM: {np.median(bm_t):.1e}")
 
             def pct(x):
                 # Filter exact zeros so log10 doesn't crash, but keep them for diagnostics
