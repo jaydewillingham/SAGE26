@@ -264,8 +264,8 @@ void grow_black_hole(const int merger_centralgal, const double mass_ratio, const
         int EddFlag = run_params->EddingtonLimitOn;
 
         BHaccreterate=eddington_limited_accretion_rate(BHaccreterate, EddFlag, galaxies[merger_centralgal].BlackHoleMass, // jayde note 
-                                                       galaxies[merger_centralgal].SnapNum, run_params, // 0 means no limiting so shouldn't affect results!
-                                                       galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
+                                                       galaxies[merger_centralgal].SnapNum, 1, run_params, 
+                                                       galaxies[merger_centralgal].BHAccretionType, galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
 
         //BHaccrete = BHaccreterate * tdyn;
         BHaccrete = BHaccreterate * (dt);

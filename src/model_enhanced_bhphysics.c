@@ -95,12 +95,12 @@ double dynamical_time(const double r_bulge, const double M_bulge_encl, const str
         // Handle NaN or non-positive values gracefully
         t_dyn = 0.001; // Default to 0.001 code units (can be adjusted as needed)
         
-        // if(r_bulge<=0 && M_bulge_encl>0){
-        // FILE *fp = fopen("tdynbad.txt", "a");
-        // if(fp != NULL) {
-        //     fprintf(fp, "%g\n", t_dyn);
-        //     fclose(fp);
-        // }}
+        if(r_bulge<=0 && M_bulge_encl>0){
+        FILE *fp = fopen("tdynbad.txt", "a");
+        if(fp != NULL) {
+            fprintf(fp, "%g\n", t_dyn);
+            fclose(fp);
+        }}
     }
     // else {
 
@@ -141,13 +141,19 @@ double eddington_accretion_rate(const double black_hole_mass, const struct param
 
 // Accretion rate limiter by Eddington limit
 double eddington_limited_accretion_rate(double accretion_rate, int eddington_flag, double black_hole_mass,
-                                        int snapnum, const struct params *run_params,
-                                        float BHMaxaccretionRate[ABSOLUTEMAXSNAPS], float BHEddingtonRateLimit[ABSOLUTEMAXSNAPS])
+                                        int snapnum, int bh_accretion_type, const struct params *run_params,
+                                        float BHAccretionType[ABSOLUTEMAXSNAPS], float BHMaxaccretionRate[ABSOLUTEMAXSNAPS], float BHEddingtonRateLimit[ABSOLUTEMAXSNAPS])
 {
     double edd_rate = 0.0;
     double return_rate = accretion_rate;
     const int valid_snap = (snapnum >= 0 && snapnum < ABSOLUTEMAXSNAPS);
     const int is_seed_bh = (black_hole_mass <= 0.0);
+
+    // Store the accretion type for diagnostics
+    if(valid_snap) {
+        BHAccretionType[snapnum] = (float)bh_accretion_type;
+        //printf("DEBUG: Snapnum = %d, BH Accretion Type = %d\n", snapnum, bh_accretion_type);
+    }
 
     if (accretion_rate > 0.0) {
         // Store the unlimited rate for diagnostics before any limit is applied.

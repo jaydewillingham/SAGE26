@@ -106,6 +106,7 @@ struct HDF5_GALAXY_OUTPUT
     float *BHMaxaccretionRate;
     float *BHEddingtonRateLimit;
     float *dt;
+    float *BHAccretionType; // 0=radio-mode, 1=quasar-mode,
 
     float *TimeOfLastMajorMerger;
     float *TimeOfLastMinorMerger;

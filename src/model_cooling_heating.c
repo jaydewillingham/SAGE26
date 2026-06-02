@@ -771,11 +771,20 @@ double do_AGN_heating(double coolingGas, const int centralgal, const double dt, 
         //EDDrate = (1.3e38 * galaxies[centralgal].BlackHoleMass * 1e10 / run_params->Hubble_h) / (run_params->UnitEnergy_in_cgs / run_params->UnitTime_in_s) / (0.1 * 9e10); To Delete
 
         // accretion onto BH is always limited by the Eddington rate
-        if(AGNrate > EDDrate) {
-            AGNrate = eddington_limited_accretion_rate(AGNrate, 1, galaxies[centralgal].BlackHoleMass,
-                                                       galaxies[centralgal].SnapNum, run_params,
-                                                       galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
-        }
+        
+        int EddFlag = run_params->EddingtonLimitOn;
+
+
+        // if(AGNrate > EDDrate) {
+        //     AGNrate = eddington_limited_accretion_rate(AGNrate, EddFlag, galaxies[centralgal].BlackHoleMass,
+        //                                                galaxies[centralgal].SnapNum, 0, run_params,
+        //                                                galaxies[centralgal].BHAccretionType, galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
+        // }
+
+        AGNrate = eddington_limited_accretion_rate(AGNrate, EddFlag, galaxies[centralgal].BlackHoleMass,
+                                                       galaxies[centralgal].SnapNum, 0, run_params,
+                                                       galaxies[centralgal].BHAccretionType, galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
+        
 
         // accreted mass onto black hole
         AGNaccreted = AGNrate * dt; 
@@ -877,8 +886,8 @@ double do_AGN_heating_cgm(double coolingGas, const int centralgal, const double 
         // accretion onto BH is always limited by the Eddington rate
         if(AGNrate > EDDrate) {
             AGNrate = eddington_limited_accretion_rate(AGNrate, 1, galaxies[centralgal].BlackHoleMass,
-                                                       galaxies[centralgal].SnapNum, run_params,
-                                                       galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
+                                                       galaxies[centralgal].SnapNum, 0, run_params,
+                                                       galaxies[centralgal].BHAccretionType, galaxies[centralgal].BHMaxaccretionRate, galaxies[centralgal].BHEddingtonRateLimit);
         }
 
         // accreted mass onto black hole
