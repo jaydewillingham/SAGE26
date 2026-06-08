@@ -160,10 +160,12 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
 
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
 
-    // // grow black hole through accretion from cold disk during mergers
-    // if(run_params->AGNrecipeOn) {
-    //     grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
-    // }
+    //some update -> bulge radius 
+
+    // grow black hole through accretion from cold disk during mergers
+    if(run_params->AGNrecipeOn) {
+        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
+    }
 
     // Determine which bulge component will receive burst stars
     // This must be decided BEFORE the starburst
@@ -221,10 +223,10 @@ void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int
         }
     }
     
-    // grow black hole through accretion from cold disk during mergers
-    if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
-    }
+    // // grow black hole through accretion from cold disk during mergers
+    // if(run_params->AGNrecipeOn) {
+    //     grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
+    // }
 
 }
 
@@ -388,12 +390,18 @@ void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, co
     galaxies[t].BlackHoleMass += galaxies[p].BlackHoleMass;
     galaxies[t].BHMergerMass[galaxies[t].SnapNum] += galaxies[p].BlackHoleMass; // jayde note Track BH mass growth from mergers separately
 
-    // sum BH growth tracking
-    //galaxies[t].QuasarModeBHaccretionMass[snap] += galaxies[p].QuasarModeBHaccretionMass[snap];
-    //galaxies[t].RadioModeBHaccretionMass[snap] += galaxies[p].RadioModeBHaccretionMass[snap]; // jayde note
-    //galaxies[t].InstabilityDrivenBHaccretionMass[snap] += galaxies[p].InstabilityDrivenBHaccretionMass[snap]; // jayde note
-    //galaxies[t].MergerDrivenBHaccretionMass[snap] += galaxies[p].MergerDrivenBHaccretionMass[snap]; // jayde note   
-    //galaxies[t].BHMergerMass[snap] += galaxies[p].BHMergerMass[snap]; // jayde note THIS COUNTS TWICE
+    //if BHExsituGrowthOn is enabled, we track the contributon to BH growth from satellites after merger.
+    if(run_params->BHExsituGrowthOn) {
+        
+        galaxies[t].QuasarModeBHaccretionMass += galaxies[p].QuasarModeBHaccretionMass;
+
+        for(int snap = 0; snap < ABSOLUTEMAXSNAPS; snap++) {
+
+            galaxies[t].RadioModeBHaccretionMass[snap] += galaxies[p].RadioModeBHaccretionMass[snap];
+            galaxies[t].InstabilityDrivenBHaccretionMass[snap] += galaxies[p].InstabilityDrivenBHaccretionMass[snap];
+            galaxies[t].MergerDrivenBHaccretionMass[snap] += galaxies[p].MergerDrivenBHaccretionMass[snap];
+        }
+    }
 
     galaxies[t].CGMgas += galaxies[p].CGMgas;
     galaxies[t].MetalsCGMgas += galaxies[p].MetalsCGMgas;

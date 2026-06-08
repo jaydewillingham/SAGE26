@@ -309,6 +309,10 @@ int read_parameter_file(const char *fname, struct params *run_params)
     ParamAddr[NParam] = &(run_params->AGNDynamicAccretionOn);
     ParamID[NParam++] = INT;
 
+    strncpy(ParamTag[NParam], "BHExsituGrowthOn", MAXTAGLEN);
+    ParamAddr[NParam] = &(run_params->BHExsituGrowthOn);
+    ParamID[NParam++] = INT;
+
     strncpy(ParamTag[NParam], "BHSeedMinHaloMass", MAXTAGLEN);
     ParamAddr[NParam] = &(run_params->BHSeedMinHaloMass);
     ParamID[NParam++] = DOUBLE;

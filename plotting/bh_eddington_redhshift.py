@@ -66,9 +66,9 @@ MIN_Z0_BH_MASS = 1e4
 MILLENNIUM_BOX_MPC_H = 62.5
 
 # Colours for the three lines in every panel
-COLOR_TOTAL  = '#1976D2'   # blue
-COLOR_QUASAR = '#D32F2F'   # red
-COLOR_RADIO  = '#388E3C'   # green
+COLOR_TOTAL  = 'k'          # black
+COLOR_QUASAR = '#1976D2'   # blue
+COLOR_RADIO  = '#D32F2F'   # red
 
 # ============================================================================
 # REDSHIFT MAP  (Millennium snapshot → z)

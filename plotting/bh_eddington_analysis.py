@@ -7,6 +7,12 @@ Black hole Eddington limit analysis with:
 4. Accretion rate ratio vs dt scatter plot
 5. NEW: Accretion rate function  log10(dN/d log10 lambda) vs log10(lambda)
         Split by Radio Mode (0) and Quasar Mode (1)
+
+Flags:
+  --edd-limited   Enforce Eddington limit in the rate function plot by clamping
+                  lambda = min(lambda, 1).  Simulates the case where the model
+                  would have used the Eddington-limited rate regardless of the
+                  requested accretion rate, so nothing exceeds lambda = 1.
 """
 import argparse
 import glob
@@ -132,10 +138,10 @@ def read_data(file_list, snap_num, id_field, h_h):
     all_bh_mass = []
     all_stellar_mass = []
     all_mvir = []
-    all_bh_max_accretion_history = []  
-    all_bh_eddington_rate_limit = []   
-    all_bh_mass_at_accretion = []      
-    all_dt = []                         
+    all_bh_max_accretion_history = []
+    all_bh_eddington_rate_limit = []
+    all_bh_mass_at_accretion = []
+    all_dt = []
     all_bh_accretion_type = []
 
     seen_ids = set()
@@ -229,7 +235,7 @@ def read_data(file_list, snap_num, id_field, h_h):
                 dt_hist = np.zeros_like(bh_max_accr_hist)
 
             # ----------------------------------------------------------------
-            # NEW: BHAccretionType
+            # BHAccretionType
             # ----------------------------------------------------------------
             if 'BHAccretionType' in grp:
                 bh_acc_type_raw = grp['BHAccretionType'][:]
@@ -268,7 +274,7 @@ def read_data(file_list, snap_num, id_field, h_h):
                 dt_padded = np.zeros(max_shape)
                 dt_padded[:, :dt_hist.shape[1]] = dt_hist
                 dt_hist = dt_padded
-                
+
             if bh_acc_type_hist.shape != bh_max_accr_hist.shape:
                 max_shape = bh_max_accr_hist.shape
                 bh_acc_type_padded = np.zeros(max_shape) - 1
@@ -649,7 +655,7 @@ def create_eddington_ratio_vs_dt_plot(
 
 
 # ============================================================================
-# NEW: ACCRETION RATE FUNCTION
+# ACCRETION RATE FUNCTION
 # ============================================================================
 def create_accretion_rate_function(
     bh_max_accr_history,
@@ -662,18 +668,29 @@ def create_accretion_rate_function(
     lambda_min=1e-4,
     lambda_max=1e4,
     label=None,
+    edd_limited=False,
 ):
     """
     Plot the accretion rate function (analogous to a BH mass function):
         log10(dN / d log10 lambda) vs log10(lambda)
     Split by Radio Mode (0) and Quasar Mode (1).
+
+    Parameters
+    ----------
+    edd_limited : bool
+        If True, clamp lambda = min(lambda, 1) before binning.  This simulates
+        the Eddington-limited case, where the code would have used the Eddington
+        rate as a hard cap, so no BH exceeds lambda = 1.  The distribution is
+        unchanged below the Eddington limit; all super-Eddington probability is
+        piled up at lambda = 1 and nothing appears to the right of
+        log10(lambda) = 0.
     """
 
     # ------------------------------------------------------------------
     # 1. Select and flatten
     # ------------------------------------------------------------------
-    accr = bh_max_accr_history[plot_mask]
-    edd  = bh_eddington_rate_limit[plot_mask]
+    accr     = bh_max_accr_history[plot_mask]
+    edd      = bh_eddington_rate_limit[plot_mask]
     acc_type = bh_accretion_type_history[plot_mask]
 
     if accr.ndim == 1:
@@ -683,8 +700,8 @@ def create_accretion_rate_function(
     if acc_type.ndim == 1:
         acc_type = acc_type.reshape(-1, 1)
 
-    accr_flat = accr.flatten()
-    edd_flat  = edd.flatten()
+    accr_flat     = accr.flatten()
+    edd_flat      = edd.flatten()
     acc_type_flat = acc_type.flatten()
 
     # ------------------------------------------------------------------
@@ -706,28 +723,47 @@ def create_accretion_rate_function(
         return
 
     # ------------------------------------------------------------------
-    # 3. lambda and log10(lambda)
+    # 3. lambda  —  clamp to 1 if --edd-limited
     # ------------------------------------------------------------------
-    lam     = accr_valid / edd_valid
+    lam = accr_valid / edd_valid
+
+    if edd_limited:
+        n_super_edd = int(np.sum(lam > 1.0))
+        lam = np.minimum(lam, 1.0)
+        print(f"  [--edd-limited] Clamped {n_super_edd:,} super-Eddington events to lambda = 1")
+
     log_lam = np.log10(lam)
 
-    n_total   = len(log_lam)
-    
-    # Isolate sub-populations
+    n_total  = len(log_lam)
     mask_radio  = (type_valid == 0)
     mask_quasar = (type_valid == 1)
-    
-    n_radio = np.sum(mask_radio)
-    n_quasar = np.sum(mask_quasar)
+    n_radio  = int(np.sum(mask_radio))
+    n_quasar = int(np.sum(mask_quasar))
 
     # ------------------------------------------------------------------
-    # 4. Bin Setup
+    # 4. Bin setup
+    #    When edd_limited is set the x-axis hard-caps at 0; force the
+    #    last bin edge to land exactly at 0 so no bin center or step
+    #    extension can bleed past log10(lambda) = 0.
     # ------------------------------------------------------------------
     log_lam_min = np.floor(log_lam.min() * 2) / 2
-    log_lam_max = np.ceil(log_lam.max()  * 2) / 2
-    bins        = np.linspace(log_lam_min, log_lam_max, n_bins + 1)
+    if edd_limited:
+        log_lam_max = 0.0                              # hard cap at Eddington
+        bins        = np.linspace(log_lam_min, 0.0, n_bins + 1)
+    else:
+        log_lam_max = np.ceil(log_lam.max() * 2) / 2
+        bins        = np.linspace(log_lam_min, log_lam_max, n_bins + 1)
+
     bin_width   = bins[1] - bins[0]
     bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+    # When edd_limited, only plot bins whose centre is strictly <= 0.
+    # This prevents ax.step(where='mid') from drawing a half-bin-width
+    # extension beyond x=0.
+    if edd_limited:
+        plot_centers_mask = bin_centers <= 0.0
+    else:
+        plot_centers_mask = np.ones(len(bin_centers), dtype=bool)
 
     if sim_volume_mpc3 is not None:
         y_label = (r'$\log_{10}\left(\frac{\mathrm{d}N}{\mathrm{d}\log_{10}\lambda}'
@@ -740,43 +776,43 @@ def create_accretion_rate_function(
     # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(8.34, 6.25))
     ax.minorticks_on()
-    
+
     categories = [
-        {'data': log_lam, 'label': 'Total', 'color': '#1976D2', 'z': 3, 'alpha': 0.10, 'lw': 2.5},          # Blue
-        {'data': log_lam[mask_quasar], 'label': 'Quasar Mode', 'color': '#D32F2F', 'z': 4, 'alpha': 0.15, 'lw': 2.0}, # Red
-        {'data': log_lam[mask_radio], 'label': 'Radio Mode', 'color': '#388E3C', 'z': 5, 'alpha': 0.15, 'lw': 2.0},   # Green
+        {'data': log_lam,              'label': 'Total',       'color': 'k',       'z': 3, 'alpha': 0.10, 'lw': 2.5},
+        {'data': log_lam[mask_quasar], 'label': 'Quasar Mode', 'color': '#1976D2', 'z': 4, 'alpha': 0.15, 'lw': 2.0},
+        {'data': log_lam[mask_radio],  'label': 'Radio Mode',  'color': '#D32F2F', 'z': 5, 'alpha': 0.15, 'lw': 2.0},
     ]
-    
+
     plot_data_store = []
-    global_min_y = np.inf
-    
-    # Compute histograms and errors for all lines first to find safe global min Y
+    global_min_y    = np.inf
+
     for cat in categories:
         counts, _ = np.histogram(cat['data'], bins=bins)
-        
+
         if sim_volume_mpc3 is not None:
             y = counts / (bin_width * sim_volume_mpc3)
         else:
             y = counts / bin_width
-            
+
         positive = y > 0
         if not np.any(positive):
             plot_data_store.append(None)
             continue
-            
+
         log_y = np.full_like(y, np.nan, dtype=float)
         log_y[positive] = np.log10(y[positive])
-        
+
         global_min_y = min(global_min_y, np.nanmin(log_y[positive]))
-        
+
         # Poisson errors propagated into log space
         sigma_counts = np.sqrt(counts.astype(float))
-        sigma_y = sigma_counts / (bin_width * sim_volume_mpc3) if sim_volume_mpc3 else sigma_counts / bin_width
-        
+        sigma_y = (sigma_counts / (bin_width * sim_volume_mpc3)
+                   if sim_volume_mpc3 else sigma_counts / bin_width)
+
         err_up   = np.full_like(y, np.nan, dtype=float)
         err_down = np.full_like(y, np.nan, dtype=float)
         err_up[positive] = np.log10(y[positive] + sigma_y[positive]) - log_y[positive]
-        
+
         idx = np.where(positive)[0]
         lower_safe = (y[positive] - sigma_y[positive]) > 0
         for i, safe in zip(idx, lower_safe):
@@ -784,53 +820,50 @@ def create_accretion_rate_function(
                 err_down[i] = log_y[i] - np.log10(y[i] - sigma_y[i])
             else:
                 err_down[i] = log_y[i] - np.log10(0.5 * y[i])
-                
+
         plot_data_store.append({
-            'log_y': log_y,
-            'err_up': err_up,
+            'log_y':    log_y,
+            'err_up':   err_up,
             'err_down': err_down,
-            'positive': positive
+            'positive': positive,
         })
 
-    y_floor = global_min_y - 1.5 if not np.isinf(global_min_y) else -10.0
+    y_floor    = global_min_y - 1.5 if not np.isinf(global_min_y) else -10.0
     all_valid_y = []
-    
-    # Actually draw the lines
+
     for cat, pdata in zip(categories, plot_data_store):
-        if pdata is None: continue
-        
-        log_y = pdata['log_y']
+        if pdata is None:
+            continue
+
+        log_y    = pdata['log_y']
         positive = pdata['positive']
-        err_up = pdata['err_up']
+        err_up   = pdata['err_up']
         err_down = pdata['err_down']
-        
-        all_valid_y.extend(log_y[positive])
-        
-        # Draw main line
+
+        all_valid_y.extend(log_y[positive & plot_centers_mask])
+
         ax.step(
-            bin_centers, log_y,
+            bin_centers[plot_centers_mask], log_y[plot_centers_mask],
             where='mid', linewidth=cat['lw'], color=cat['color'],
             label=cat['label'], zorder=cat['z'],
         )
-        
-        # Draw fill underneath
         ax.fill_between(
-            bin_centers, log_y, y_floor,
-            step='mid', alpha=cat['alpha'], color=cat['color'], zorder=cat['z']-1
+            bin_centers[plot_centers_mask], log_y[plot_centers_mask], y_floor,
+            step='mid', alpha=cat['alpha'], color=cat['color'], zorder=cat['z'] - 1,
         )
-        
-        # Draw errorbars
-        err_mask = positive & np.isfinite(log_y)
+
+        err_mask = positive & np.isfinite(log_y) & plot_centers_mask
         ax.errorbar(
             bin_centers[err_mask], log_y[err_mask],
             yerr=[err_down[err_mask], err_up[err_mask]],
-            fmt='none', ecolor=cat['color'], elinewidth=1.2, capsize=3, zorder=cat['z']+1,
-            alpha=0.8
+            fmt='none', ecolor=cat['color'], elinewidth=1.2, capsize=3,
+            zorder=cat['z'] + 1, alpha=0.8,
         )
 
+    # Eddington-limit reference line
     ax.axvline(
         x=0.0, color='#000000', linestyle='--', linewidth=1.5, alpha=0.75,
-        #label=r'Eddington limit ($\lambda = 1$)', zorder=2,
+        zorder=2,
     )
 
     ax.set_xlabel(
@@ -838,7 +871,8 @@ def create_accretion_rate_function(
         fontsize=18,
     )
     ax.set_ylabel(y_label, fontsize=16)
-    ax.set_xlim(log_lam_min, log_lam_max)
+    # Hard-clip the x-axis: when edd_limited, nothing should appear past 0
+    ax.set_xlim(log_lam_min, 0.2 if edd_limited else log_lam_max)
 
     if len(all_valid_y) > 0:
         ax.set_ylim(y_floor + 1.0, np.nanmax(all_valid_y) + 0.8)
@@ -856,12 +890,16 @@ def create_accretion_rate_function(
     print("\n" + "=" * 70)
     print("ACCRETION RATE FUNCTION SUMMARY")
     print("=" * 70)
+    if edd_limited:
+        print("  Mode: Eddington-limited  (lambda clamped to max 1)")
+    else:
+        print("  Mode: Unlimited  (raw lambda values)")
     print(f"  Valid accretion events total:        {n_total:,}")
     print(f"    - Quasar Mode:                     {n_quasar:,}")
     print(f"    - Radio Mode:                      {n_radio:,}")
     print(f"  Median log10(lambda):                {np.median(log_lam):.4f}")
     print(f"  Mean   log10(lambda):                {np.mean(log_lam):.4f}")
-    print(f"  log10(lambda) range (full):          [{log_lam.min():.2f}, {log_lam.max():.2f}]")
+    print(f"  log10(lambda) range (after clamp):   [{log_lam.min():.2f}, {log_lam.max():.2f}]")
     if sim_volume_mpc3 is not None:
         print(f"  Simulation volume used:              {sim_volume_mpc3:.4e} Mpc^3 h^-3")
     print("=" * 70)
@@ -888,14 +926,27 @@ def main():
                               'Pass 0 to plot raw counts instead of number density.'))
     parser.add_argument('--no-volume', action='store_true',
                         help='Plot raw dN/d(log lambda) counts instead of number density.')
+    # -----------------------------------------------------------------------
+    # NEW FLAG
+    # -----------------------------------------------------------------------
+    parser.add_argument(
+        '--edd-limited', action='store_true',
+        help=(
+            'Enforce Eddington limit in the accretion rate function: clamp '
+            'lambda = min(lambda, 1) before binning.  Simulates the case where '
+            'the model uses the Eddington rate as a hard cap, so no BH can '
+            'exceed lambda = 1 and nothing appears to the right of '
+            'log10(lambda) = 0.'
+        ),
+    )
     args = parser.parse_args()
 
     file_list = sorted(glob.glob(args.input_pattern))
     if not file_list:
         print(f"No files found for {args.input_pattern}"); sys.exit(1)
 
-    sim    = read_simulation_params(file_list[0])
-    h_h    = sim['Hubble_h']
+    sim      = read_simulation_params(file_list[0])
+    h_h      = sim['Hubble_h']
     snap_num = args.snapshot if args.snapshot is not None else sim['latest_snapshot']
     id_field = find_id_field(file_list, snap_num)
 
@@ -903,9 +954,10 @@ def main():
     print(f"Snapshot: {snap_num} | Redshift: {redshift:.3f} | Hubble_h: {h_h}")
     print("Reading data and tracking growth channels...")
 
-    # Unpack including new bh_acc_type_hist
-    ids, bh_mass, stellar_mass, mvir, bh_max_accr_hist, bh_eddington_hist, bh_mass_at_accretion, dt_data, bh_acc_type_hist = \
-        read_data(file_list, snap_num, id_field, h_h)
+    (ids, bh_mass, stellar_mass, mvir,
+     bh_max_accr_hist, bh_eddington_hist,
+     bh_mass_at_accretion, dt_data,
+     bh_acc_type_hist) = read_data(file_list, snap_num, id_field, h_h)
 
     # ====================================================================
     # RAW HDF5 INSPECTION
@@ -922,8 +974,8 @@ def main():
                 print(f"\nBH-related fields in {snap_key}:")
                 bh_fields = sorted([k for k in grp.keys() if 'BH' in k or 'Black' in k or 'dt' in k])
                 for field in bh_fields:
-                    data   = grp[field][:]
-                    flat   = data.flatten()
+                    data      = grp[field][:]
+                    flat      = data.flatten()
                     n_nonzero = np.sum(flat > 0)
                     print(f"  {field:35s} shape={str(data.shape):25s} nonzero={n_nonzero:,}/{len(flat):,}")
 
@@ -951,7 +1003,7 @@ def main():
     print("=" * 70)
 
     if bh_mass_at_accretion.ndim == 2:
-        ngal, maxsnaps = bh_mass_at_accretion.shape
+        ngal, maxsnaps     = bh_mass_at_accretion.shape
         current_snap_idx   = min(snap_num, maxsnaps - 1)
         bh_mass_current    = bh_mass_at_accretion[:, current_snap_idx]
         zero_current       = np.sum(bh_mass_current <= 0.0)
@@ -972,7 +1024,7 @@ def main():
             print(f"  Non-zero — min: {v.min():.3e}  max: {v.max():.3e}  "
                   f"mean: {v.mean():.3e}  median: {np.median(v):.3e}")
     else:
-        zero_m = np.sum(bh_mass_at_accretion <= 0.0)
+        zero_m  = np.sum(bh_mass_at_accretion <= 0.0)
         total_m = bh_mass_at_accretion.size
         print(f"\nScalar 1D: zero={zero_m:,}/{total_m:,} ({zero_m/total_m:.2%})")
 
@@ -1002,12 +1054,15 @@ def main():
     elif args.sim_volume is not None:
         sim_volume = args.sim_volume
     else:
-        sim_volume = MILLENNIUM_BOX_MPC_H ** 3   # default: 500^3 (Mpc/h)^3
+        sim_volume = MILLENNIUM_BOX_MPC_H ** 3   # default: 62.5^3 (Mpc/h)^3
 
     if sim_volume is not None:
         print(f"\nAccretion rate function: using volume = {sim_volume:.4e} Mpc^3 h^-3")
     else:
         print("\nAccretion rate function: plotting raw counts (no volume normalisation)")
+
+    if args.edd_limited:
+        print("Accretion rate function: Eddington-limited mode ON  (lambda clamped to ≤ 1)")
 
     # ====================================================================
     # PLOTS
@@ -1056,6 +1111,7 @@ def main():
             n_bins=40,
             lambda_min=1e-4,
             lambda_max=1e4,
+            edd_limited=args.edd_limited,
         )
 
     print("\n✓ All plots completed successfully!")
