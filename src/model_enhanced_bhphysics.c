@@ -73,21 +73,11 @@ double dynamical_time(const double r_bulge, const double M_bulge_encl, const str
     // Dynamical time calculation: t_dyn ~ r / v_circular
     // where v_circular = sqrt(GM/r)
     
-    // All inputs in code units:
-    // r_bulge: kpc/h
-    // M_bulge_encl: 10^10 M_sun/h
-    // run_params->G: code units
-    
     double rscale = r_bulge / 1.67;
     double vbulge = sqrt(run_params->G * M_bulge_encl / rscale);  // velocity in code units
                                    // length in code units
     double t_dyn = rscale / vbulge;                               // time in code units
     
-    //if(t_dyn <= 0.0) {
-        // Safeguard against non-positive dynamical time
-    //    t_dyn = 1.0; // Default to 1 code unit (can be adjusted as needed)
-    //}
-
     // Convert to Megayears for output
     double t_dyn_myr = t_dyn * run_params->UnitTime_in_Megayears;
 
@@ -105,26 +95,6 @@ double dynamical_time(const double r_bulge, const double M_bulge_encl, const str
         //     fclose(fp);
         // }}
     }
-    // else {
-
-    //     FILE *fp = fopen("tdyngood_end_BulgeMass.txt", "a");
-    //         if(fp != NULL) {
-    //             fprintf(fp, "%g\n", t_dyn_myr);
-    //             fclose(fp);
-    //         }
-    //     }
-
-    
-
-    
-    //printf("t_dyn = %g Myr (code units: %g)\n", t_dyn_myr, t_dyn);
-
-    // Write to file for statistical analysis
-    // FILE *fp = fopen("bhphysics_stats.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\t%g\t%g\n", r_bulge, M_bulge_encl, t_dyn);
-    //     fclose(fp);
-    // }
 
     return t_dyn;  // Return in code units for internal use
 }

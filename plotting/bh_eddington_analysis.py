@@ -6,7 +6,7 @@ Black hole Eddington limit analysis with:
 3. Summary statistics on dt parameter
 4. Accretion rate ratio vs dt scatter plot
 5. NEW: Accretion rate function  log10(dN/d log10 lambda) vs log10(lambda)
-        Split by Radio Mode (0) and Quasar Mode (1)
+        Split by Radio Mode (0), Merger (1), and Disk Instability (2)
 
 Flags:
   --edd-limited   Enforce Eddington limit in the rate function plot by clamping
@@ -70,6 +70,16 @@ UNIT_TIME_IN_S = 3.086e19  # 1 Gyr in seconds (Millennium default)
 
 # Millennium simulation box side length in Mpc/h
 MILLENNIUM_BOX_MPC_H = 62.5 #500.0
+
+# ============================================================================
+# ACCRETION TYPE MAPPING
+#   0 = Radio Mode
+#   1 = Merger
+#   2 = Disk Instability
+# ============================================================================
+ACCRETION_TYPE_RADIO = 0
+ACCRETION_TYPE_MERGER = 1
+ACCRETION_TYPE_INSTABILITY = 2
 
 # ============================================================================
 # REDSHIFT MAPPING - MILLENNIUM SIMULATION
@@ -236,6 +246,8 @@ def read_data(file_list, snap_num, id_field, h_h):
 
             # ----------------------------------------------------------------
             # BHAccretionType
+            #   0 = Radio Mode, 1 = Merger, 2 = Disk Instability
+            #   (-1 used as fill value for "no accretion event")
             # ----------------------------------------------------------------
             if 'BHAccretionType' in grp:
                 bh_acc_type_raw = grp['BHAccretionType'][:]
@@ -673,7 +685,8 @@ def create_accretion_rate_function(
     """
     Plot the accretion rate function (analogous to a BH mass function):
         log10(dN / d log10 lambda) vs log10(lambda)
-    Split by Radio Mode (0) and Quasar Mode (1).
+    Split by accretion channel:
+        Radio Mode (0), Merger (1), Disk Instability (2)
 
     Parameters
     ----------
@@ -734,11 +747,13 @@ def create_accretion_rate_function(
 
     log_lam = np.log10(lam)
 
-    n_total  = len(log_lam)
-    mask_radio  = (type_valid == 0)
-    mask_quasar = (type_valid == 1)
-    n_radio  = int(np.sum(mask_radio))
-    n_quasar = int(np.sum(mask_quasar))
+    n_total      = len(log_lam)
+    mask_radio   = (type_valid == ACCRETION_TYPE_RADIO)
+    mask_merger  = (type_valid == ACCRETION_TYPE_MERGER)
+    mask_instab  = (type_valid == ACCRETION_TYPE_INSTABILITY)
+    n_radio      = int(np.sum(mask_radio))
+    n_merger     = int(np.sum(mask_merger))
+    n_instab     = int(np.sum(mask_instab))
 
     # ------------------------------------------------------------------
     # 4. Bin setup
@@ -773,14 +788,16 @@ def create_accretion_rate_function(
 
     # ------------------------------------------------------------------
     # 5. Process categories and plot
+    #    Type codes: 0 = Radio, 1 = Merger, 2 = Disk Instability
     # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(8.34, 6.25))
     ax.minorticks_on()
 
     categories = [
-        {'data': log_lam,              'label': 'Total',       'color': 'k',       'z': 3, 'alpha': 0.10, 'lw': 2.5},
-        {'data': log_lam[mask_quasar], 'label': 'Quasar Mode', 'color': '#1976D2', 'z': 4, 'alpha': 0.15, 'lw': 2.0},
-        {'data': log_lam[mask_radio],  'label': 'Radio Mode',  'color': '#D32F2F', 'z': 5, 'alpha': 0.15, 'lw': 2.0},
+        {'data': log_lam,              'label': 'Total',            'color': 'k',       'z': 3, 'alpha': 0.10, 'lw': 2.5},
+        {'data': log_lam[mask_merger], 'label': 'Merger',           'color': '#1976D2', 'z': 4, 'alpha': 0.15, 'lw': 2.0},
+        {'data': log_lam[mask_radio],  'label': 'Radio Mode',       'color': '#D32F2F', 'z': 5, 'alpha': 0.15, 'lw': 2.0},
+        {'data': log_lam[mask_instab], 'label': 'Disk Instability', 'color': '#388E3C', 'z': 6, 'alpha': 0.15, 'lw': 2.0},
     ]
 
     plot_data_store = []
@@ -895,8 +912,12 @@ def create_accretion_rate_function(
     else:
         print("  Mode: Unlimited  (raw lambda values)")
     print(f"  Valid accretion events total:        {n_total:,}")
-    print(f"    - Quasar Mode:                     {n_quasar:,}")
-    print(f"    - Radio Mode:                      {n_radio:,}")
+    print(f"    - Radio Mode (0):                  {n_radio:,}")
+    print(f"    - Merger (1):                      {n_merger:,}")
+    print(f"    - Disk Instability (2):            {n_instab:,}")
+    n_unclassified = n_total - n_radio - n_merger - n_instab
+    if n_unclassified > 0:
+        print(f"    - Unclassified (other type codes): {n_unclassified:,}")
     print(f"  Median log10(lambda):                {np.median(log_lam):.4f}")
     print(f"  Mean   log10(lambda):                {np.mean(log_lam):.4f}")
     print(f"  log10(lambda) range (after clamp):   [{log_lam.min():.2f}, {log_lam.max():.2f}]")
@@ -978,6 +999,14 @@ def main():
                     flat      = data.flatten()
                     n_nonzero = np.sum(flat > 0)
                     print(f"  {field:35s} shape={str(data.shape):25s} nonzero={n_nonzero:,}/{len(flat):,}")
+
+                if 'BHAccretionType' in grp:
+                    acc_type_flat = grp['BHAccretionType'][:].flatten()
+                    print(f"\nBHAccretionType breakdown (0=Radio, 1=Merger, 2=Disk Instability):")
+                    for code, name in [(0, 'Radio Mode'), (1, 'Merger'), (2, 'Disk Instability')]:
+                        print(f"  Type {code} ({name:17s}): {np.sum(acc_type_flat == code):,}")
+                    other = np.sum(~np.isin(acc_type_flat, [0, 1, 2]))
+                    print(f"  Other / no event:           {other:,}")
 
                 if 'BHMassatAccretion' in grp:
                     print(f"\nBHMassatAccretion Raw Data:")
@@ -1103,7 +1132,7 @@ def main():
         )
 
     if not args.no_rate_function:
-        print(f"\n[{plot_index}/5] Creating accretion rate function (split by mode)...")
+        print(f"\n[{plot_index}/5] Creating accretion rate function (split by channel)...")
         create_accretion_rate_function(
             bh_max_accr_hist, bh_eddington_hist, bh_acc_type_hist, plot_mask,
             output_dir / 'bh_accretion_rate_function.png',
