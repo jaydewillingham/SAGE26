@@ -99,11 +99,7 @@ void starformation_and_feedback(const int p, const int centralgal, const double 
                     galaxies[p].H2gas = galaxies[p].ColdGas;
                 }
 
-                // double nu_sf = 0.4 * (1.0 + pow(gas_surface_density / 200.0, 0.4)); // Gyr^-1
-                // double nu_sf_per_year = nu_sf * SEC_PER_MEGAYEAR/ 1000;
-
                 if (galaxies[p].H2gas > 0.0 && tdyn > 0.0) {
-                    // strdot = nu_sf_per_year * galaxies[p].H2gas;
                     strdot = run_params->SfrEfficiency * galaxies[p].H2gas / tdyn;
                 } else {
                     strdot = 0.0;
@@ -355,23 +351,8 @@ void starformation_and_feedback(const int p, const int centralgal, const double 
                 galaxies[p].H2gas = galaxies[p].ColdGas;
             }
 
-            // 4. Star Formation Timescale (Xie et al. 2017 Simplification)
-            // The paper Section 2.4.2 explicitly states:
-            // "We assume a constant depletion time t_dep = 2.6 Gyr."
-            
-            // This 2.6 Gyr already accounts for the efficiency (epsilon_ff),
-            // so we do not need to multiply by extra factors unless tuning.
-            // double t_depletion_gyr = 2.6; 
-
-            // Convert Gyr to code time units
-            // (e.g., if UnitTime is ~978 Myr, this converts 2.6 Gyr to code units)
-            // double t_depletion_code = t_depletion_gyr * 1000.0 / run_params->UnitTime_in_Megayears;
-
             // 5. Calculate SFR
             if (galaxies[p].H2gas > 0.0 && tdyn > 0.0) {
-                // SFR = M_H2 / t_depletion
-                // Using  the dynamical time as a proxy for depletion time, scaled by efficiency, as per Xie et al. 2017
-                // STRICT XIE 2017:
                 strdot = run_params->SfrEfficiency * galaxies[p].H2gas / tdyn;
             } else {
                 strdot = 0.0;
@@ -571,25 +552,19 @@ void starformation_and_feedback(const int p, const int centralgal, const double 
 
             // 3. UV Radiation Field (U_MW)
             // Normalized to Milky Way. 
-            // Ideally this should scale with SFR surface density (e.g., prev step).
-            // Lacking an explicit input, we default to MW-like (U=1) or allow 
-            // for user-defined scaling.
             double U_MW = 1.0; 
             
             // 4. Characteristic Scale Parameter (S) 
             // S = L / 100 pc. 
-            // For a galactic disk, the characteristic size L is roughly the diameter (3*Rs, following SAGE C16)
             double L_pc = 3.0 * rs_pc;
             double S = L_pc / 100.0;
 
             // 5. Calculate Fitting Parameters (Erratum 2016)
             
             // s parameter [cite: 404]
-            // s = (0.001 + 0.1 * U_MW)^0.7
             double s_param = pow(0.001 + 0.1 * U_MW, 0.7);
 
             // D_star parameter [cite: 218]
-            // Accounts for line overlap saturation on large scales
             double D_star = 0.17 * (2.0 + pow(S, 5.0)) / (1.0 + pow(S, 5.0));
 
             // g factor [cite: 215]
@@ -609,12 +584,10 @@ void starformation_and_feedback(const int p, const int centralgal, const double 
             }
 
             // R = Sigma_H2 / Sigma_HI [cite: 395]
-            // eta approx 0 on kpc scales [cite: 398]
             double eta = 0.0; 
             double R = q * (1.0 + eta * q) / (1.0 + eta);
 
             // 7. H2 Fraction and Mass
-            // f_H2 = R / (1 + R)
             double f_H2 = R / (1.0 + R);
             
             // Clamp to physical range
@@ -628,7 +601,6 @@ void starformation_and_feedback(const int p, const int centralgal, const double 
             }
 
             // 8. Calculate Star Formation Rate
-            // Standard relation: SFR = Efficiency * H2 / t_dyn
             if(galaxies[p].H2gas > 0.0 && tdyn > 0.0) {
                 strdot = run_params->SfrEfficiency * galaxies[p].H2gas / tdyn;
             } else {
@@ -781,10 +753,12 @@ void starformation_and_feedback(const int p, const int centralgal, const double 
     // recompute the metallicity of the cold phase
     metallicity = get_metallicity(galaxies[p].ColdGas, galaxies[p].MetalsColdGas);
 
-    // Safety check: ensure reheated_mass doesn't exceed remaining ColdGas (floating-point precision)
-    if(reheated_mass > galaxies[p].ColdGas) {
-        reheated_mass = galaxies[p].ColdGas;
-    }
+    // BUG FIX: update_from_star_formation can push ColdGas to a tiny negative value
+    // due to floating-point precision when stars + reheated_mass was right at the limit.
+    // Clamp ColdGas to zero first, then clamp reheated_mass to the (now non-negative) ColdGas.
+    if(galaxies[p].ColdGas < 0.0) galaxies[p].ColdGas = 0.0;
+    if(reheated_mass > galaxies[p].ColdGas) reheated_mass = galaxies[p].ColdGas;
+    if(reheated_mass < 0.0) reheated_mass = 0.0;
 
     // update from SN feedback
     update_from_feedback(p, centralgal, reheated_mass, ejected_mass, metallicity, galaxies, run_params);
@@ -1204,7 +1178,12 @@ void starformation_ffb(const int p, const int centralgal, const double dt, const
         if(ejected_mass < 0.0) ejected_mass = 0.0;
     }
 
+    // BUG FIX: update_from_star_formation can push ColdGas to a tiny negative value
+    // due to floating-point precision when stars + reheated_mass was right at the limit.
+    // Clamp ColdGas to zero first, then clamp reheated_mass to the (now non-negative) ColdGas.
+    if(galaxies[p].ColdGas < 0.0) galaxies[p].ColdGas = 0.0;
     if(reheated_mass > galaxies[p].ColdGas) reheated_mass = galaxies[p].ColdGas;
+    if(reheated_mass < 0.0) reheated_mass = 0.0;
 
     update_from_feedback(p, centralgal, reheated_mass, ejected_mass, metallicity, galaxies, run_params);
 

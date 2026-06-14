@@ -46,6 +46,34 @@ double estimate_merging_time(const int sat_halo, const int mother_halo, const in
 
 }
 
+// ------ NEW ------- //
+static double merger_feedback_factor(const int merger_centralgal,
+                       struct GALAXY *galaxies,
+                       const struct params *run_params)
+{
+    if(run_params->SupernovaRecipeOn != 1) return 0.0;
+ 
+    if(run_params->FIREmodeOn == 1) {
+        const double z  = run_params->ZZ[galaxies[merger_centralgal].SnapNum];
+        const double vc = galaxies[merger_centralgal].Vvir;
+        const double V_CRIT = 60.0;
+ 
+        if(vc <= 0.0 || z < 0.0) return 0.0;
+ 
+        double z_term = pow(1.0 + z, run_params->RedshiftPowerLawExponent);
+        double v_term;
+        const double vc_floored = (vc < 1.0) ? 1.0 : vc;
+        if(vc_floored < V_CRIT)
+            v_term = pow(vc_floored / V_CRIT, -3.2);
+        else
+            v_term = pow(vc_floored / V_CRIT, -1.0);
+ 
+        return run_params->FeedbackReheatingEpsilon * z_term * v_term;
+    } else {
+        return run_params->FeedbackReheatingEpsilon;
+    }
+}
+
 double calculate_merger_remnant_radius(const struct GALAXY *g1, const struct GALAXY *g2)
 {
     // 1. Calculate Total Baryonic Mass (Stars + Gas) for both progenitors
@@ -126,188 +154,257 @@ double calculate_merger_remnant_radius(const struct GALAXY *g1, const struct GAL
     return R_final;
 }
 
-void deal_with_galaxy_merger(const int p, const int merger_centralgal, const int centralgal,
-                             const double time, const double dt, const int halonr, const int step,
-                             struct GALAXY *galaxies, const struct params *run_params)
+/* ============================================================
+ * deal_with_galaxy_merger  (REFACTORED)
+ *
+ * Key change: joint cold-gas budget computed before any
+ * starburst or BH accretion call.
+ * ============================================================ */
+void deal_with_galaxy_merger(const int p,
+                              const int merger_centralgal,
+                              const int centralgal,
+                              const double time,
+                              const double dt,
+                              const int halonr,
+                              const int step,
+                              struct GALAXY *galaxies,
+                              const struct params *run_params)
 {
     double mi, ma, mass_ratio;
-
-    // calculate mass ratio of merging galaxies
-    if(galaxies[p].StellarMass + galaxies[p].ColdGas < galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas) {
+ 
+    /* ---- MASS RATIO ---- */
+    if(galaxies[p].StellarMass + galaxies[p].ColdGas <
+       galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas) {
         mi = galaxies[p].StellarMass + galaxies[p].ColdGas;
         ma = galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas;
     } else {
         mi = galaxies[merger_centralgal].StellarMass + galaxies[merger_centralgal].ColdGas;
         ma = galaxies[p].StellarMass + galaxies[p].ColdGas;
     }
-
-    // BUG FIX: Handle zero-mass edge case properly
-    if(ma > 0) {
-        mass_ratio = mi / ma;
-    } else if(mi > 0) {
-        mass_ratio = 1.0;
-    } else {
-        mass_ratio = 0.0;
-    }
-
-    // Determine Central Morphology BEFORE adding satellite
-    // This determines where burst stars will go
-    double central_disk_mass = galaxies[merger_centralgal].StellarMass - galaxies[merger_centralgal].BulgeMass;
-    int is_disk_dominated = (central_disk_mass > 0.5 * galaxies[merger_centralgal].StellarMass);
-    
-    // Save disc radius BEFORE merger for instability bulge radius update
+ 
+    if(ma > 0)       mass_ratio = mi / ma;
+    else if(mi > 0)  mass_ratio = 1.0;
+    else             mass_ratio = 0.0;
+ 
+    /* ---- PRE-MERGER MORPHOLOGY FLAGS ---- */
+    double central_disk_mass = galaxies[merger_centralgal].StellarMass
+                             - galaxies[merger_centralgal].BulgeMass;
+    int is_disk_dominated    = (central_disk_mass >
+                                0.5 * galaxies[merger_centralgal].StellarMass);
+ 
     const double old_disk_radius = galaxies[merger_centralgal].DiskScaleRadius;
-
+ 
+    /* ---- COMBINE GALAXIES ---- */
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
-
-    //some update -> bulge radius 
-
-    //grow black hole through accretion from cold disk during mergers
-    if(run_params->AGNrecipeOn) {
-        grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
-    }
-
-    // Determine which bulge component will receive burst stars
-    // This must be decided BEFORE the starburst
-    int burst_to_merger_bulge = 0;  // 0 = instability, 1 = merger
-    
+ 
+    /* ---- DETERMINE BURST DESTINATION ---- */
+    int burst_to_merger_bulge;
     if(mass_ratio > run_params->ThreshMajorMerger) {
-        // Major merger: all stars go to merger-driven bulge
         burst_to_merger_bulge = 1;
     } else {
-        // Minor merger: depends on morphology
-        if(is_disk_dominated) {
-            // Disc-dominated: burst goes to instability bulge
-            burst_to_merger_bulge = 0;
-        } else {
-            // Spheroid-dominated: burst goes to merger bulge
-            burst_to_merger_bulge = 1;
-        }
+        burst_to_merger_bulge = is_disk_dominated ? 0 : 1;
     }
+ 
+    /* ==============================================================
+     * JOINT GAS BUDGET
+     * ==============================================================
+     * We compute the *uncapped* demand from each process, then scale
+     * all three down by a single factor if their sum exceeds ColdGas.
+     * ============================================================== */
+ 
+    const double cold_gas = galaxies[merger_centralgal].ColdGas;
+ 
+    /* -- (a) Starburst demand -- */
+    double eburst;
+    if(/* mode == */ 0 == 1)   /* mode is always 0 here */
+        eburst = mass_ratio;
+    else
+        eburst = 0.56 * pow(mass_ratio, 0.7);
+ 
+    double gas_for_starburst;
+    if(run_params->SFprescription == 1 || run_params->SFprescription == 3 ||
+       run_params->SFprescription == 4 || run_params->SFprescription == 5 ||
+       run_params->SFprescription == 6 || run_params->SFprescription == 7)
+        gas_for_starburst = galaxies[merger_centralgal].H2gas;
+    else
+        gas_for_starburst = cold_gas;
+ 
+    double stars_demanded = eburst * gas_for_starburst;
+    if(stars_demanded < 0.0) stars_demanded = 0.0;
+ 
+    /* -- (b) SN feedback demand (proportional to stars) -- */
+    double feedback_factor   = merger_feedback_factor(merger_centralgal, galaxies, run_params);
+    double reheated_demanded = feedback_factor * stars_demanded;
+ 
+    /* -- (c) BH accretion demand -- */
+    double BHaccrete_demanded = 0.0;
+    if(run_params->AGNrecipeOn && cold_gas > 0.0) {
+        BHaccrete_demanded = run_params->BlackHoleGrowthRate * mass_ratio /
+                             (1.0 + SQR(280.0 / galaxies[merger_centralgal].Vvir)) *
+                             cold_gas;
+        if(BHaccrete_demanded < 0.0) BHaccrete_demanded = 0.0;
+    }
+ 
+    /* -- Joint scaling -- */
+    double total_demanded = stars_demanded + reheated_demanded + BHaccrete_demanded;
+    double scale          = 1.0;
+    if(total_demanded > cold_gas && total_demanded > 0.0)
+        scale = cold_gas / total_demanded;
+ 
+    double stars_scaled     = stars_demanded    * scale;
+    double reheated_scaled  = reheated_demanded * scale;
+    double BHaccrete_scaled = BHaccrete_demanded * scale;
 
-    // starburst recipe - now tracks which bulge component receives the stars
-    collisional_starburst_recipe(mass_ratio, merger_centralgal, centralgal, time, dt, halonr, 
-                                 0, step, burst_to_merger_bulge, old_disk_radius, 
-                                 galaxies, run_params);
-
-    // 1. Calculate the merger remnant radius via Energy Conservation
-    // We do this AFTER the starburst so the energy budget includes burst stars
-    double new_merger_radius = calculate_merger_remnant_radius(&galaxies[merger_centralgal], &galaxies[p]);
-
+    /* Guard against floating-point negatives */
+    if(stars_scaled    < 0.0) stars_scaled    = 0.0;
+    if(reheated_scaled < 0.0) reheated_scaled = 0.0;
+    if(BHaccrete_scaled < 0.0) BHaccrete_scaled = 0.0;
+    /* ==============================================================
+     * END JOINT GAS BUDGET
+     * ============================================================== */
+ 
+    /* ---- BH ACCRETION (pre-scaled) ---- */
+    if(run_params->AGNrecipeOn) {
+        grow_black_hole(merger_centralgal, mass_ratio, 0, dt,
+                        BHaccrete_scaled,          /* pre-scaled demand */
+                        galaxies, run_params);
+    }
+ 
+    /* ---- STARBURST (pre-scaled) ---- */
+    collisional_starburst_recipe(mass_ratio, merger_centralgal, centralgal,
+                                  time, dt, halonr,
+                                  0, step,
+                                  burst_to_merger_bulge, old_disk_radius,
+                                  stars_scaled, reheated_scaled, /* pre-scaled */
+                                  galaxies, run_params);
+ 
+    /* ---- MERGER REMNANT RADIUS ---- */
+    double new_merger_radius =
+        calculate_merger_remnant_radius(&galaxies[merger_centralgal], &galaxies[p]);
+ 
+    /* ---- MORPHOLOGY UPDATE ---- */
     if(mass_ratio > run_params->ThreshMajorMerger) {
-        // CASE 1: MAJOR MERGER (Section 5.2.3)
-        // Destroys disc, creates pure merger-driven bulge
         make_bulge_from_burst(merger_centralgal, galaxies);
-        
-        // Apply the Energy Conservation Radius
         galaxies[merger_centralgal].MergerBulgeRadius = new_merger_radius;
-        galaxies[merger_centralgal].BulgeRadius = new_merger_radius;
-        
+        galaxies[merger_centralgal].BulgeRadius       = new_merger_radius;
         galaxies[merger_centralgal].TimeOfLastMajorMerger = time;
-        galaxies[p].mergeType = 2; 
-
+        galaxies[p].mergeType = 2;
     } else {
-       // CASE 2: MINOR MERGER
         galaxies[p].mergeType = 1;
         galaxies[merger_centralgal].TimeOfLastMinorMerger = time;
-
-        if (is_disk_dominated) {
-            // Minor merger on DISC (Section 5.2.1)
-            // Radius already updated in add_galaxies_together and collisional_starburst_recipe
-            // Do nothing here
-        } else {
-            // Minor merger on SPHEROID (Section 5.2.3)
-            // Update merger bulge radius with energy conservation
+        if(!is_disk_dominated) {
             galaxies[merger_centralgal].MergerBulgeRadius = new_merger_radius;
             get_bulge_radius(merger_centralgal, galaxies, run_params);
         }
     }
-    
-    // // grow black hole through accretion from cold disk during mergers
-    // if(run_params->AGNrecipeOn) {
-    //     grow_black_hole(merger_centralgal, mass_ratio, 0, dt, galaxies, run_params);// jayde note
-    // }
-
 }
 
 
 
-void grow_black_hole(const int merger_centralgal, const double mass_ratio, const int from_instability, const double dt, struct GALAXY *galaxies, const struct params *run_params)
+/* ============================================================
+ * grow_black_hole  (REFACTORED)
+ *
+ * New parameter: double BHaccrete_in
+ *   >= 0  → use this pre-scaled demand directly (joint-budget path)
+ *   <  0  → compute demand internally as before (legacy path)
+ *
+ * Everything after the demand calculation is unchanged:
+ *   accretiontime, Eddington limiting, ColdGas deduction,
+ *   per-channel tracking, quasar_mode_wind.
+ * ============================================================ */
+void grow_black_hole(const int merger_centralgal,
+                     const double mass_ratio,
+                     const int from_instability,
+                     const double dt,
+                     const double BHaccrete_in,          /* NEW */
+                     struct GALAXY *galaxies,
+                     const struct params *run_params)
 {
     double BHaccrete, metallicity;
     const int snap = galaxies[merger_centralgal].SnapNum;
-
+ 
     if(snap >= 0 && snap < ABSOLUTEMAXSNAPS) {
         galaxies[merger_centralgal].dt[snap] = (float)dt;
     }
-
-
-    if(galaxies[merger_centralgal].ColdGas > 0.0) {
+ 
+    if(galaxies[merger_centralgal].ColdGas <= 0.0) return;
+ 
+    /* ---- DEMAND CALCULATION (skipped when caller supplies value) ---- */
+    if(BHaccrete_in >= 0.0) {
+        /* Joint-budget path: use the pre-scaled value. */
+        BHaccrete = BHaccrete_in;
+    } else {
+        /* Legacy path: compute demand and cap to ColdGas. */
         BHaccrete = run_params->BlackHoleGrowthRate * mass_ratio /
-            (1.0 + SQR(280.0 / galaxies[merger_centralgal].Vvir)) * galaxies[merger_centralgal].ColdGas;
-
-        // cannot accrete more gas than is available!
-        if(BHaccrete > galaxies[merger_centralgal].ColdGas) {
+                    (1.0 + SQR(280.0 / galaxies[merger_centralgal].Vvir)) *
+                    galaxies[merger_centralgal].ColdGas;
+ 
+        if(BHaccrete > galaxies[merger_centralgal].ColdGas)
             BHaccrete = galaxies[merger_centralgal].ColdGas;
-        }
-
-        double accretiontime = dt;
-
-        if(run_params->AGNDynamicAccretionOn) {
-            double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius, galaxies[merger_centralgal].BulgeMass, run_params);
-            accretiontime = tdyn;
-        } else {
-            accretiontime = dt;
-        }
-
-        double BHaccreterate = (BHaccrete) / accretiontime; //  Msol/(yr?)
-        //double BHaccreterate = BHaccrete / tdyn; // Msol per dynamical time of bulge
-
-      
-        int EddFlag = run_params->EddingtonLimitOn;
-        int EddType;
-        if(from_instability) {
-            EddType = 2;
-        } else {
-            EddType = 1;
-        }
-
-        BHaccreterate=eddington_limited_accretion_rate(BHaccreterate, EddFlag, galaxies[merger_centralgal].BlackHoleMass, // jayde note 
-                                                       galaxies[merger_centralgal].SnapNum, EddType, run_params, 
-                                                       galaxies[merger_centralgal].BHAccretionType, galaxies[merger_centralgal].BHMaxaccretionRate, galaxies[merger_centralgal].BHEddingtonRateLimit);
-
-        //BHaccrete = BHaccreterate * tdyn;
-        BHaccrete = BHaccreterate * accretiontime;
-
-        //new 'seed' tracking: if BH mass is zero and accretion is non-zero, this is the seed mass
-        if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0) {
-            galaxies[merger_centralgal].BHSeedMass = BHaccrete;
-        }
-
-        metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas, galaxies[merger_centralgal].MetalsColdGas);
-        galaxies[merger_centralgal].BHMassatAccretion[snap] = galaxies[merger_centralgal].BlackHoleMass;
-        galaxies[merger_centralgal].BlackHoleMass += BHaccrete;
-        galaxies[merger_centralgal].ColdGas -= BHaccrete;
-        galaxies[merger_centralgal].MetalsColdGas -= metallicity * BHaccrete;
-
-
-        /* BUG FIX: Ensure metals don't go negative due to numerical precision */
-        if(galaxies[merger_centralgal].MetalsColdGas < 0.0) {
-            galaxies[merger_centralgal].MetalsColdGas = 0.0;
-        }
-
-        //galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
-        
-        if(from_instability) {
-            galaxies[merger_centralgal].InstabilityDrivenBHaccretionMass[snap] += BHaccrete;
-        } else {
-            galaxies[merger_centralgal].MergerDrivenBHaccretionMass[snap] += BHaccrete;
-        } 
-
-        quasar_mode_wind(merger_centralgal, BHaccrete, galaxies, run_params);
-
-        galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
     }
+ 
+    if(BHaccrete <= 0.0) return;
+ 
+    /* ---- ACCRETION TIME ---- */
+    double accretiontime;
+    if(run_params->AGNDynamicAccretionOn) {
+        double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius,
+                                     galaxies[merger_centralgal].BulgeMass,
+                                     run_params);
+        accretiontime = tdyn;
+    } else {
+        accretiontime = dt;
+    }
+ 
+    /* Guard against zero or negative accretion time */
+    if(accretiontime <= 0.0) accretiontime = dt;
+ 
+    double BHaccreterate = BHaccrete / accretiontime;
+ 
+    /* ---- EDDINGTON LIMITING ---- */
+    int EddFlag = run_params->EddingtonLimitOn;
+    int EddType  = from_instability ? 2 : 1;
+ 
+    BHaccreterate = eddington_limited_accretion_rate(
+                        BHaccreterate, EddFlag,
+                        galaxies[merger_centralgal].BlackHoleMass,
+                        galaxies[merger_centralgal].SnapNum,
+                        EddType, run_params,
+                        galaxies[merger_centralgal].BHAccretionType,
+                        galaxies[merger_centralgal].BHMaxaccretionRate,
+                        galaxies[merger_centralgal].BHEddingtonRateLimit);
+ 
+    BHaccrete = BHaccreterate * accretiontime;
+ 
+    /* Re-cap to ColdGas in case Eddington limiting didn't already do it
+     * (should be rare after joint budget, but be defensive). */
+    if(BHaccrete > galaxies[merger_centralgal].ColdGas)
+        BHaccrete = galaxies[merger_centralgal].ColdGas;
+ 
+    /* ---- SEED TRACKING ---- */
+    if(galaxies[merger_centralgal].BlackHoleMass <= 0.0 && BHaccrete > 0.0)
+        galaxies[merger_centralgal].BHSeedMass = BHaccrete;
+ 
+    /* ---- APPLY TO GALAXY ---- */
+    metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas,
+                                  galaxies[merger_centralgal].MetalsColdGas);
+    galaxies[merger_centralgal].BHMassatAccretion[snap] = galaxies[merger_centralgal].BlackHoleMass;
+    galaxies[merger_centralgal].BlackHoleMass     += BHaccrete;
+    galaxies[merger_centralgal].ColdGas           -= BHaccrete;
+    galaxies[merger_centralgal].MetalsColdGas     -= metallicity * BHaccrete;
+ 
+    if(galaxies[merger_centralgal].MetalsColdGas < 0.0)
+        galaxies[merger_centralgal].MetalsColdGas = 0.0;
+ 
+    /* ---- PER-CHANNEL TRACKING ---- */
+    if(from_instability)
+        galaxies[merger_centralgal].InstabilityDrivenBHaccretionMass[snap] += BHaccrete;
+    else
+        galaxies[merger_centralgal].MergerDrivenBHaccretionMass[snap]      += BHaccrete;
+ 
+    quasar_mode_wind(merger_centralgal, BHaccrete, galaxies, run_params);
+ 
+    galaxies[merger_centralgal].QuasarModeBHaccretionMass += BHaccrete;
 }
 
 
@@ -482,235 +579,220 @@ void make_bulge_from_burst(const int p, struct GALAXY *galaxies)
     }
 }
 
-void collisional_starburst_recipe(const double mass_ratio, const int merger_centralgal, const int centralgal,
-                                  const double time, const double dt, const int halonr, const int mode, const int step,
-                                  const int burst_to_merger_bulge, const double old_disk_radius,
-                                  struct GALAXY *galaxies, const struct params *run_params)
+/* ============================================================
+ * collisional_starburst_recipe  (REFACTORED)
+ *
+ * New parameters: double stars_in, double reheated_in
+ *   Both >= 0  → use pre-scaled demand directly (joint-budget path)
+ *   Both <  0  → compute demand internally as before (legacy path)
+ *
+ * Everything from update_from_star_formation onward is unchanged.
+ * ============================================================ */
+void collisional_starburst_recipe(const double mass_ratio,
+                                  const int merger_centralgal,
+                                  const int centralgal,
+                                  const double time,
+                                  const double dt,
+                                  const int halonr,
+                                  const int mode,
+                                  const int step,
+                                  const int burst_to_merger_bulge,
+                                  const double old_disk_radius,
+                                  const double stars_in,       /* NEW */
+                                  const double reheated_in,    /* NEW */
+                                  struct GALAXY *galaxies,
+                                  const struct params *run_params)
 {
-    // BUG FIX: Validate step bounds and dt > 0
     XASSERT(step >= 0 && step < STEPS, -1,
             "Error: step = %d is out of bounds [0, %d)\n", step, STEPS);
     XASSERT(dt > 0.0, -1,
             "Error: dt = %g must be > 0 for SFR calculation\n", dt);
-
+ 
     double stars, reheated_mass, ejected_mass, fac, metallicity, eburst, gas_for_starburst;
-
-    // This is the major and minor merger starburst recipe of Somerville et al. 2001.
-    // The coefficients in eburst are taken from TJ Cox's PhD thesis and should be more accurate then previous.
-
-    // the bursting fraction
-    if(mode == 1) {
-        eburst = mass_ratio;
+ 
+    /* ---- DEMAND CALCULATION (skipped when caller supplies values) ---- */
+    if(stars_in >= 0.0 && reheated_in >= 0.0) {
+        /* Joint-budget path: use pre-scaled values directly. */
+        stars         = stars_in;
+        reheated_mass = reheated_in;
+        if(stars < 0.0)         stars         = 0.0;
+        if(reheated_mass < 0.0) reheated_mass = 0.0;    
     } else {
-        eburst = 0.56 * pow(mass_ratio, 0.7);
-    }
-
-    if (run_params->SFprescription == 1 || run_params->SFprescription == 3 || run_params->SFprescription == 4 ||
-        run_params->SFprescription == 5 || run_params->SFprescription == 6 ||
-        run_params->SFprescription == 7) {
-        // Use H2 gas for starburst if applicable
-        gas_for_starburst = galaxies[merger_centralgal].H2gas;
-    } else {
-        // Otherwise use cold gas
-        gas_for_starburst = galaxies[merger_centralgal].ColdGas;
-    }
-
-    stars = eburst * gas_for_starburst;
-    if(stars < 0.0) {
-        stars = 0.0;
-    }
-    
-    // this bursting results in SN feedback on the cold/hot gas
-    if(run_params->SupernovaRecipeOn == 1) {
-        if(run_params->FIREmodeOn == 1) {
-            // [FIRE model code - unchanged]
-            const double z = run_params->ZZ[galaxies[merger_centralgal].SnapNum];
-            const double vc = galaxies[merger_centralgal].Vvir;
-            const double V_CRIT = 60.0;
-            
-            if(vc <= 0.0 || z < 0.0) {
-                reheated_mass = 0.0;
-            } else {
-                double z_term = pow(1.0 + z, run_params->RedshiftPowerLawExponent);
-                double v_term;
-                const double vc_floored = (vc < 1.0) ? 1.0 : vc;  /* Floor at 1 km/s */
-                if (vc_floored < V_CRIT) {
-                    v_term = pow(vc_floored / V_CRIT, -3.2);
+        /* Legacy path: compute demand, cap to ColdGas. */
+        if(mode == 1)
+            eburst = mass_ratio;
+        else
+            eburst = 0.56 * pow(mass_ratio, 0.7);
+ 
+        if(run_params->SFprescription == 1 || run_params->SFprescription == 3 ||
+           run_params->SFprescription == 4 || run_params->SFprescription == 5 ||
+           run_params->SFprescription == 6 || run_params->SFprescription == 7)
+            gas_for_starburst = galaxies[merger_centralgal].H2gas;
+        else
+            gas_for_starburst = galaxies[merger_centralgal].ColdGas;
+ 
+        stars = eburst * gas_for_starburst;
+        if(stars < 0.0) stars = 0.0;
+ 
+        if(run_params->SupernovaRecipeOn == 1) {
+            if(run_params->FIREmodeOn == 1) {
+                const double z  = run_params->ZZ[galaxies[merger_centralgal].SnapNum];
+                const double vc = galaxies[merger_centralgal].Vvir;
+                const double V_CRIT = 60.0;
+                if(vc <= 0.0 || z < 0.0) {
+                    reheated_mass = 0.0;
                 } else {
-                    v_term = pow(vc_floored / V_CRIT, -1.0);
+                    double z_term = pow(1.0 + z, run_params->RedshiftPowerLawExponent);
+                    double v_term;
+                    const double vc_floored = (vc < 1.0) ? 1.0 : vc;
+                    if(vc_floored < V_CRIT)
+                        v_term = pow(vc_floored / V_CRIT, -3.2);
+                    else
+                        v_term = pow(vc_floored / V_CRIT, -1.0);
+                    double eta_reheat = run_params->FeedbackReheatingEpsilon * z_term * v_term;
+                    reheated_mass    = eta_reheat * stars;
                 }
-                double scaling_factor = z_term * v_term;
-                double eta_reheat = run_params->FeedbackReheatingEpsilon * scaling_factor;
-                reheated_mass = eta_reheat * stars;
+            } else {
+                reheated_mass = run_params->FeedbackReheatingEpsilon * stars;
             }
         } else {
-            reheated_mass = run_params->FeedbackReheatingEpsilon * stars;
+            reheated_mass = 0.0;
         }
-    } else {
-        reheated_mass = 0.0;
+ 
+        XASSERT(reheated_mass >= 0.0, -1,
+                "Error: Reheated mass = %g should be >= 0.0", reheated_mass);
+ 
+        if((stars + reheated_mass) > galaxies[merger_centralgal].ColdGas) {
+            fac           = galaxies[merger_centralgal].ColdGas / (stars + reheated_mass);
+            stars        *= fac;
+            reheated_mass *= fac;
+        }
     }
-
-    XASSERT(reheated_mass >= 0.0, -1, "Error: Reheated mass = %g should be >= 0.0", reheated_mass);
-
-    // can't use more cold gas than is available!
-    if((stars + reheated_mass) > galaxies[merger_centralgal].ColdGas) {
-        fac = galaxies[merger_centralgal].ColdGas / (stars + reheated_mass);
-        stars *= fac;
-        reheated_mass *= fac;
-    }
-
-    // [... ejected_mass calculation - unchanged ...]
-    // determine ejection
+ 
+    /* ---- EJECTED MASS (always computed fresh from the final stars value) ---- */
     if(run_params->SupernovaRecipeOn == 1) {
         if(galaxies[merger_centralgal].Vvir > 0.0) {
             if(run_params->FIREmodeOn == 1) {
-                // [FIRE ejection code - unchanged]
-                const double z = run_params->ZZ[galaxies[merger_centralgal].SnapNum];
+                const double z  = run_params->ZZ[galaxies[merger_centralgal].SnapNum];
                 const double vc = galaxies[merger_centralgal].Vvir;
                 const double V_CRIT = 60.0;
-                
                 if(vc <= 0.0 || z < 0.0) {
                     ejected_mass = 0.0;
                 } else {
                     double z_term = pow(1.0 + z, run_params->RedshiftPowerLawExponent);
                     double v_term;
-                    const double vc_floored = (vc < 1.0) ? 1.0 : vc;  /* Floor at 1 km/s */
-                    if (vc_floored < V_CRIT) {
+                    const double vc_floored = (vc < 1.0) ? 1.0 : vc;
+                    if(vc_floored < V_CRIT)
                         v_term = pow(vc_floored / V_CRIT, -3.2);
-                    } else {
+                    else
                         v_term = pow(vc_floored / V_CRIT, -1.0);
-                    }
                     double scaling_factor = z_term * v_term;
-
-                    double E_FB = run_params->FeedbackEjectionEfficiency * scaling_factor *
-                                  0.5 * stars * (run_params->EtaSNcode * run_params->EnergySNcode);
+                    double E_FB  = run_params->FeedbackEjectionEfficiency * scaling_factor *
+                                   0.5 * stars * (run_params->EtaSNcode * run_params->EnergySNcode);
                     double E_lift = 0.5 * reheated_mass * vc * vc;
-
-                    if(E_FB > E_lift) {
-                        ejected_mass = (E_FB - E_lift) / (0.5 * vc * vc);
-                    } else {
-                        ejected_mass = 0.0;
-                    }
+                    ejected_mass  = (E_FB > E_lift) ? (E_FB - E_lift) / (0.5 * vc * vc) : 0.0;
                 }
             } else {
                 ejected_mass =
-                    (run_params->FeedbackEjectionEfficiency * (run_params->EtaSNcode * run_params->EnergySNcode) / 
+                    (run_params->FeedbackEjectionEfficiency *
+                     (run_params->EtaSNcode * run_params->EnergySNcode) /
                      (galaxies[merger_centralgal].Vvir * galaxies[merger_centralgal].Vvir) -
                      run_params->FeedbackReheatingEpsilon) * stars;
             }
         } else {
             ejected_mass = 0.0;
         }
-
-        if(ejected_mass < 0.0) {
-            ejected_mass = 0.0;
-        }
+        if(ejected_mass < 0.0) ejected_mass = 0.0;
     } else {
         ejected_mass = 0.0;
     }
-
-    // starbursts add to the bulge
-    galaxies[merger_centralgal].SfrBulge[step] += stars / dt;
-    galaxies[merger_centralgal].SfrBulgeColdGas[step] += galaxies[merger_centralgal].ColdGas;
+ 
+    /* ---- EVERYTHING FROM HERE IS UNCHANGED ---- */
+ 
+    galaxies[merger_centralgal].SfrBulge[step]              += stars / dt;
+    galaxies[merger_centralgal].SfrBulgeColdGas[step]       += galaxies[merger_centralgal].ColdGas;
     galaxies[merger_centralgal].SfrBulgeColdGasMetals[step] += galaxies[merger_centralgal].MetalsColdGas;
-
-    metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas, galaxies[merger_centralgal].MetalsColdGas);
+ 
+    metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas,
+                                  galaxies[merger_centralgal].MetalsColdGas);
     update_from_star_formation(merger_centralgal, stars, metallicity, galaxies, run_params);
-
-    // Track star formation history for bulge starbursts
+ 
     if(run_params->SaveFullSFH) {
         const int snapnum = galaxies[merger_centralgal].SnapNum;
-        if(snapnum >= 0 && snapnum < ABSOLUTEMAXSNAPS) {
-            galaxies[merger_centralgal].SFHMassBulge[snapnum] += (1.0 - run_params->RecycleFraction) * stars;
-        }
+        if(snapnum >= 0 && snapnum < ABSOLUTEMAXSNAPS)
+            galaxies[merger_centralgal].SFHMassBulge[snapnum] +=
+                (1.0 - run_params->RecycleFraction) * stars;
     }
-
-    // FIX: Track burst stars in the appropriate bulge component
+ 
     const double recycled_stars = (1 - run_params->RecycleFraction) * stars;
-    
-    galaxies[merger_centralgal].BulgeMass += recycled_stars;
+ 
+    galaxies[merger_centralgal].BulgeMass       += recycled_stars;
     galaxies[merger_centralgal].MetalsBulgeMass += metallicity * recycled_stars;
-    
+ 
     if(burst_to_merger_bulge) {
-        // Add to merger-driven bulge
         galaxies[merger_centralgal].MergerBulgeMass += recycled_stars;
-        // Radius will be recalculated in deal_with_galaxy_merger using energy conservation
     } else {
-        // Add to instability-driven bulge
         galaxies[merger_centralgal].InstabilityBulgeMass += recycled_stars;
-        // Update radius using Tonini equation (15)
-        update_instability_bulge_radius(merger_centralgal, recycled_stars, old_disk_radius, 
-                                       galaxies, run_params);
+        update_instability_bulge_radius(merger_centralgal, recycled_stars,
+                                        old_disk_radius, galaxies, run_params);
     }
+ 
+    metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas,
+                                  galaxies[merger_centralgal].MetalsColdGas);
+ 
+    /* BUG FIX: guard against ColdGas going negative after update_from_star_formation */
+    if(galaxies[merger_centralgal].ColdGas < 0.0) galaxies[merger_centralgal].ColdGas = 0.0;
+    if(reheated_mass > galaxies[merger_centralgal].ColdGas) reheated_mass = galaxies[merger_centralgal].ColdGas;
+    if(reheated_mass < 0.0) reheated_mass = 0.0;
 
-    // recompute the metallicity of the cold phase
-    metallicity = get_metallicity(galaxies[merger_centralgal].ColdGas, galaxies[merger_centralgal].MetalsColdGas);
-
-    // update from feedback
-    update_from_feedback(merger_centralgal, centralgal, reheated_mass, ejected_mass, metallicity, galaxies, run_params);
-
-    // Clamp H2/H1 after gas has been consumed and ejected, so any chained merger
-    // or disk-instability check that reads H2gas gets a physically consistent value.
-    if (run_params->SFprescription == 1 || run_params->SFprescription == 3 ||
-        run_params->SFprescription == 4 || run_params->SFprescription == 5 ||
-        run_params->SFprescription == 6 || run_params->SFprescription == 7) {
+    update_from_feedback(merger_centralgal, centralgal,
+                         reheated_mass, ejected_mass, metallicity,
+                         galaxies, run_params);
+ 
+    /* Clamp H2/H1 after gas has been consumed and ejected */
+    if(run_params->SFprescription == 1 || run_params->SFprescription == 3 ||
+       run_params->SFprescription == 4 || run_params->SFprescription == 5 ||
+       run_params->SFprescription == 6 || run_params->SFprescription == 7) {
         if(galaxies[merger_centralgal].H2gas > galaxies[merger_centralgal].ColdGas)
             galaxies[merger_centralgal].H2gas = galaxies[merger_centralgal].ColdGas;
-        galaxies[merger_centralgal].H1gas = (galaxies[merger_centralgal].ColdGas * 0.74)
-                                            - galaxies[merger_centralgal].H2gas;
-        if(galaxies[merger_centralgal].H1gas < 0.0) galaxies[merger_centralgal].H1gas = 0.0;
+        galaxies[merger_centralgal].H1gas =
+            (galaxies[merger_centralgal].ColdGas * 0.74) - galaxies[merger_centralgal].H2gas;
+        if(galaxies[merger_centralgal].H1gas < 0.0)
+            galaxies[merger_centralgal].H1gas = 0.0;
     }
-
-    // check for disk instability
+ 
     if(run_params->DiskInstabilityOn && mode == 0) {
         if(mass_ratio < run_params->ThreshMajorMerger) {
-            check_disk_instability(merger_centralgal, centralgal, halonr, time, dt, step, galaxies, (struct params *) run_params);
+            check_disk_instability(merger_centralgal, centralgal, halonr, time, dt,
+                                   step, galaxies, (struct params *) run_params);
         }
     }
-
-    // formation of new metals - instantaneous recycling approximation - only SNII
+ 
     if(galaxies[merger_centralgal].ColdGas > 1e-8 && mass_ratio < run_params->ThreshMajorMerger) {
-        // MINOR MERGER with sufficient cold gas: some metals stay in disk
-        const double FracZleaveDiskVal = run_params->FracZleaveDisk * exp(-1.0 * galaxies[centralgal].Mvir / 30.0);
-        
-        // Metals that stay in disk
+        const double FracZleaveDiskVal =
+            run_params->FracZleaveDisk * exp(-1.0 * galaxies[centralgal].Mvir / 30.0);
         galaxies[merger_centralgal].MetalsColdGas += run_params->Yield * (1.0 - FracZleaveDiskVal) * stars;
-        
-        // Metals that leave disk - regime dependent
         const double metals_leaving_disk = run_params->Yield * FracZleaveDiskVal * stars;
-        
         if(run_params->CGMrecipeOn == 1) {
-            if(galaxies[centralgal].Regime == 0) {
-                // CGM-regime: metals go to CGM
-                galaxies[centralgal].MetalsCGMgas += metals_leaving_disk;
-            } else {
-                // Hot-ICM-regime: metals go to HotGas
-                galaxies[centralgal].MetalsHotGas += metals_leaving_disk;
-            }
+            if(galaxies[centralgal].Regime == 0)
+                galaxies[centralgal].MetalsCGMgas  += metals_leaving_disk;
+            else
+                galaxies[centralgal].MetalsHotGas  += metals_leaving_disk;
         } else {
-            // Original SAGE behavior: metals go to HotGas
             galaxies[centralgal].MetalsHotGas += metals_leaving_disk;
         }
     } else {
-        // MAJOR MERGER or very low cold gas: ALL metals leave disk
-        // No functional disk left, so all metals go directly to CGM/HotGas
         const double all_metals = run_params->Yield * stars;
-        
         if(run_params->CGMrecipeOn == 1) {
-            if(galaxies[centralgal].Regime == 0) {
-                // CGM-regime: metals go to CGM
+            if(galaxies[centralgal].Regime == 0)
                 galaxies[centralgal].MetalsCGMgas += all_metals;
-            } else {
-                // Hot-ICM-regime: metals go to HotGas
+            else
                 galaxies[centralgal].MetalsHotGas += all_metals;
-            }
         } else {
-            // Original SAGE behavior: metals go to HotGas
             galaxies[centralgal].MetalsHotGas += all_metals;
         }
     }
 }
-
 
 
 void disrupt_satellite_to_ICS(const int centralgal, const int gal, const double time, struct GALAXY *galaxies, const struct params *run_params)
