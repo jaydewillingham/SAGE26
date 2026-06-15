@@ -4,19 +4,14 @@ plot_timescales.py
 Read dt.txt, tdyn_B_end.txt, tdyn_disk.txt, hubbletime.txt, halotime.txt and produce:
   - Figure 1: five-panel histogram (one per timescale)
   - Figure 2: all five overlaid on a single axis
-  - Figure 4: bulge vs disk tdyn comparison
   - Figure 3: three-panel histogram of BRadii.txt, BMass_B.txt, BMass_SG.txt
               (BulgeRadius in kpc, BulgeMass and StellarMass+ColdGas in Msun)
-  - Figure 5: three-panel histogram of disk properties:
-              DRadii.txt    -> DiskScaleRadius (Mpc/h, converted to kpc)
-              DMass_S.txt   -> M_disk = StellarMass - BulgeMass
-              DMass_SG.txt  -> M_disk = StellarMass + ColdGas - BulgeMass
-              If the DMass_* files are absent, the masses are derived
-              element-wise from raw dumps:
-                  DMass_S  = SMass.txt    - BMass_B.txt
-                  DMass_SG = BMass_SG.txt - BMass_B.txt
+  - Figure 4: bulge vs disk tdyn comparison
+  - Figure 5: three-panel histogram of disk properties
   - Figure 6: mass function comparison (baryonic, bulge, disk)
-              Requires volume to be specified via --volume or read from HDF5
+  - Figure 7: extended timescale overlay — all dumps including
+              estimated_mergertime, frac_halotime, folding_tdyn, plus
+              haloscale_tdyn = Mvir_ratio.txt * tdyn_B_end.txt (row-wise)
 
 Usage:
     python plot_timescales.py [--dir PATH] [--units {code,myr}] [--log] [--save] [--volume V]
@@ -85,7 +80,7 @@ HUBBLE_h           = 0.73
 RADII_TO_KPC       = 1e3 / HUBBLE_h               # Mpc/h → kpc
 MASS_TO_MSUN       = 1e10 / HUBBLE_h              # 10^10 Msun/h → Msun
 
-# ── Timescale metadata ────────────────────────────────────────────────────────
+# ── Base timescale metadata ───────────────────────────────────────────────────
 COLOURS = {
     "dt":         "#4477AA",   # blue
     "tdyn_B_end": "#EE6677",   # red   — bulge dynamical time
@@ -101,6 +96,35 @@ LABELS = {
     "halotime":   r"$t_{\rm halo} = R_{\rm vir}/V_{\rm vir}$",
 }
 KEYS = ["dt", "tdyn_B_end", "tdyn_disk", "hubbletime", "halotime"]
+
+# ── Extended timescale metadata (Figure 7) ────────────────────────────────────
+EXTENDED_COLOURS = {
+    "dt":             "#4477AA",   # blue
+    "tdyn_B_end":     "#EE6677",   # red
+    "tdyn_disk":      "#AA3377",   # purple
+    "hubbletime":     "#228833",   # green
+    "halotime":       "#CCBB44",   # yellow
+    "frac_halotime":  "#66CCEE",   # cyan
+    "folding_tdyn":   "#BBBBBB",   # grey
+    "haloscale_tdyn": "#994455",   # deep rose  (mass_ratio × tdyn)
+}
+EXTENDED_LABELS = {
+    "dt":             r"$\Delta t$",
+    "tdyn_B_end":     r"$t_{\rm dyn}$ (bulge)",
+    "tdyn_disk":      r"$t_{\rm dyn}$ (disk)",
+    "hubbletime":     r"$0.1/H(z)$",
+    "halotime":       r"$t_{\rm halo} = R_{\rm vir}/V_{\rm vir}$",
+    "frac_halotime":  r"$0.1\,t_{\rm halo}$",
+    "folding_tdyn":   r"$100\,t_{\rm dyn}$ (bulge)",
+    "haloscale_tdyn": r"$(m_{\rm sat}/m_{\rm cen})\,t_{\rm dyn,bulge}$",
+}
+EXTENDED_KEYS = [
+    "dt", "tdyn_B_end", "tdyn_disk", "halotime",
+    "frac_halotime",
+    # "hubbletime",     # 0.1/H(z) — commented out
+    # "folding_tdyn",   # 100 * tdyn_bulge — commented out
+    # "haloscale_tdyn", # (mass_ratio) * tdyn_bulge — commented out
+]
 
 # ── Bulge property metadata ───────────────────────────────────────────────────
 BULGE_COLOURS = {
@@ -130,7 +154,11 @@ DISK_KEYS = ["DRadii", "DMass_S", "DMass_SG"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# I/O helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
 def load_file(directory, key, quiet=False):
+    """Load a .txt dump, strip non-finite and non-positive values."""
     path = os.path.join(directory, f"{key}.txt")
     if not os.path.isfile(path):
         if not quiet:
@@ -150,14 +178,6 @@ def load_raw(directory, key):
 
 
 def find_hdf5_files(directory, recursive=True):
-    """
-    Locate SAGE model HDF5 files. Tries, in order:
-      1. model_*.hdf5 directly in `directory`
-      2. any *.hdf5 directly in `directory`
-      3. (if recursive) model_*.hdf5 anywhere beneath `directory`
-      4. (if recursive) any *.hdf5 anywhere beneath `directory`
-    Returns a sorted list of paths (possibly empty).
-    """
     if h5py is None:
         return []
     for pattern, rec in [
@@ -175,17 +195,11 @@ def find_hdf5_files(directory, recursive=True):
 
 
 def read_volume_from_hdf5(directory):
-    """
-    Attempt to read simulation volume from HDF5 file in the directory.
-    Returns (volume in (Mpc/h)^3, hubble_h) or (None, None) if unable to read.
-    """
     hdf5_files = find_hdf5_files(directory)
     if not hdf5_files:
         return None, None
-    
     try:
         with h5py.File(hdf5_files[0], 'r') as f:
-            # Try to read simulation parameters from header
             if 'Header/Simulation' in f:
                 sim = f['Header/Simulation']
                 hubble_h = float(sim.attrs.get('hubble_h', 0.73))
@@ -193,29 +207,12 @@ def read_volume_from_hdf5(directory):
                 volume_frac = float(sim.attrs.get('frac_volume_processed', 1.0))
                 volume = (box_size / hubble_h) ** 3 * volume_frac
                 return volume, hubble_h
-    except Exception as e:
+    except Exception:
         pass
-    
     return None, None
 
 
 def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
-    """
-    Read galaxy masses from HDF5 for a single snapshot group, summed across all
-    model_*.hdf5 files. All masses returned in Msun.
-
-    Reads StellarMass, ColdGas, BulgeMass (and Type if present) and derives:
-        baryonic = StellarMass + ColdGas                 -> 'all'
-        bulge    = BulgeMass                             -> 'bulge'
-        disk_s   = StellarMass - BulgeMass               -> 'disk_s'
-        disk_sg  = StellarMass + ColdGas - BulgeMass     -> 'disk_sg'
-    The disk masses are filtered to positive values on the way out.
-
-    If `snapshot` is None, the highest-numbered Snap_* group is used (z=0).
-    Returns a dict with keys 'all', 'cen', 'sat', 'bulge', 'disk_s', 'disk_sg'
-    (each a Msun array or None), plus 'volume', 'hubble_h', 'snapshot'.
-    Returns None on failure.
-    """
     if h5py is None:
         return None
 
@@ -224,7 +221,6 @@ def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
         return None
 
     try:
-        # Header / volume from the first file
         with h5py.File(hdf5_files[0], 'r') as f:
             if 'Header/Simulation' not in f:
                 return None
@@ -232,7 +228,6 @@ def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
             hubble_h = float(sim.attrs.get('hubble_h', 0.73))
             box_size = float(sim.attrs.get('box_size', 500.0))
 
-            # Resolve snapshot group name
             snap_groups = [k for k in f.keys() if k.startswith('Snap_')]
             if not snap_groups:
                 return None
@@ -242,7 +237,6 @@ def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
             else:
                 snap_name = f"Snap_{snapshot}"
 
-        # Sum VolumeFraction across files and concatenate galaxy arrays
         total_vf = 0.0
         sm_list, cg_list, bm_list, type_list = [], [], [], []
         for path in hdf5_files:
@@ -270,7 +264,7 @@ def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
         sm = np.concatenate(sm_list)
         cg = np.concatenate(cg_list)
         to_msun = 1.0e10 / hubble_h
-        bary_msun = (sm + cg) * to_msun               # M_stars + M_cold
+        bary_msun = (sm + cg) * to_msun
 
         result = {
             'hubble_h': hubble_h,
@@ -284,20 +278,17 @@ def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
             'snapshot': snap_name,
         }
 
-        # Centrals / satellites split
         if type_list and sum(len(t) for t in type_list) == len(bary_msun):
             gtype = np.concatenate(type_list)
             result['cen'] = bary_msun[gtype == 0]
             result['sat'] = bary_msun[gtype == 1]
 
-        # Bulge / disk decomposition (only if BulgeMass present in every file)
         if all(b is not None for b in bm_list):
             bm = np.concatenate(bm_list)
             if len(bm) == len(sm):
                 bulge_msun   = bm * to_msun
-                disk_s_code  = sm - bm                 # stellar disk
-                disk_sg_code = sm + cg - bm            # disk incl. cold gas
-                # keep positive masses (negatives flag a decomposition bug)
+                disk_s_code  = sm - bm
+                disk_sg_code = sm + cg - bm
                 result['bulge']   = bulge_msun[bulge_msun > 0.0]
                 result['disk_s']  = (disk_s_code[disk_s_code > 0.0]) * to_msun
                 result['disk_sg'] = (disk_sg_code[disk_sg_code > 0.0]) * to_msun
@@ -307,16 +298,6 @@ def read_baryonic_by_type_from_hdf5(directory, snapshot=None):
 
 
 def load_disk_mass(directory, key):
-    """
-    Load a disk-mass file directly if present; otherwise derive it
-    element-wise from raw (unfiltered, row-aligned) dumps.
-
-    The StellarMass entering the disk masses is the same Gal[p].StellarMass
-    used in the bulge dumps (BMass_SG = StellarMass + ColdGas), so:
-        DMass_SG = BMass_SG - BMass_B                  (exact, no new dumps)
-        DMass_S  = SMass - BMass_B                     (requires SMass.txt)
-    Returns data in code mass units (10^10 Msun/h), or None.
-    """
     direct = load_file(directory, key, quiet=True)
     if direct is not None:
         return direct
@@ -365,12 +346,6 @@ def apply_log_formatter(ax):
 
 
 def _mass_function(masses_msun, binwidth, volume):
-    """
-    Histogram log10(mass) and normalise to phi = N / volume / binwidth.
-    Mirrors the SAGE allresults BaryonicMassFunction recipe exactly:
-        mi = floor(min) - 2 ; ma = floor(max) + 2 ; NB = (ma-mi)/binwidth
-    Returns (bin_centres, phi).
-    """
     masses_msun = masses_msun[np.isfinite(masses_msun) & (masses_msun > 0.0)]
     if masses_msun.size == 0:
         return np.array([]), np.array([])
@@ -385,22 +360,10 @@ def _mass_function(masses_msun, binwidth, volume):
 
 
 def validate_decomposition(directory, volume=None, hubble_h=HUBBLE_h):
-    """
-    Row-by-row physical sanity check on the raw (unfiltered, row-aligned) dumps.
-    Every galaxy must satisfy   M_bulge <= M_stars <= M_baryonic,   where
-        baryonic = BMass_SG  = M_stars + M_cold
-        bulge    = BMass_B   = M_bulge
-        stars    = SMass                     (only if dumped)
-    A violation cannot be a sampling/volume/units artefact — those scale every
-    row identically — so it points to a data or physics bug (e.g. the wrong
-    mass being written into a dump). Prints counts/fractions + worst offenders,
-    and, if SMass is present, the component mass densities (which must sum to
-    the baryonic density). Returns True if all checks pass.
-    """
     print("--- Decomposition sanity check (per galaxy, from dumps) ---")
-    bary  = load_raw(directory, "BMass_SG")   # M_stars + M_cold  (code units)
-    bulge = load_raw(directory, "BMass_B")    # M_bulge
-    stars = load_raw(directory, "SMass")      # M_stars (may be None)
+    bary  = load_raw(directory, "BMass_SG")
+    bulge = load_raw(directory, "BMass_B")
+    stars = load_raw(directory, "SMass")
 
     if bary is None or bulge is None:
         print("  Need BMass_SG.txt and BMass_B.txt to validate – skipping.")
@@ -411,7 +374,7 @@ def validate_decomposition(directory, volume=None, hubble_h=HUBBLE_h):
         return True
 
     n = len(bary)
-    rtol = 1e-6                      # relative tolerance for float round-off
+    rtol = 1e-6
     ok = True
 
     def report(mask, name, a, b, extra=""):
@@ -419,29 +382,26 @@ def validate_decomposition(directory, volume=None, hubble_h=HUBBLE_h):
         nv = int(np.count_nonzero(mask))
         if nv:
             ok = False
-            w = np.argmax(a - b)     # largest absolute overshoot
+            w = np.argmax(a - b)
             print(f"  [FAIL] {name} for {nv:,}/{n:,} ({100*nv/n:.2f}%) galaxies{extra}")
             print(f"         worst row: {a[w]:.3e} vs {b[w]:.3e} (code units, "
                   f"= {a[w]*1e10/hubble_h:.3e} vs {b[w]*1e10/hubble_h:.3e} Msun)")
         else:
             print(f"  [ok]   {name} holds for all {n:,} galaxies")
 
-    # 1) bulge <= baryonic  (always available)
     report(bulge > bary * (1 + rtol), "M_bulge <= M_baryonic", bulge, bary)
 
-    # 2) bulge <= stars  and  stars <= baryonic  (need SMass)
     if stars is not None and len(stars) == n:
         report(bulge > stars * (1 + rtol), "M_bulge <= M_stars", bulge, stars)
         report(stars > bary * (1 + rtol),  "M_stars <= M_baryonic", stars, bary,
                extra="  (a violation here means M_cold < 0)")
 
-        # Component mass densities — these MUST sum to the baryonic density
         if volume:
             f = 1e10 / hubble_h / volume
             rho_b   = np.sum(bary)  * f
             rho_bul = np.sum(bulge) * f
-            rho_dsk = np.sum(stars - bulge) * f          # stellar disk
-            rho_cld = np.sum(bary - stars)  * f          # cold gas
+            rho_dsk = np.sum(stars - bulge) * f
+            rho_cld = np.sum(bary - stars)  * f
             print(f"  mass densities [Msun (Mpc/h)^-3]:")
             print(f"     baryonic            = {rho_b:.3e}")
             print(f"     bulge + disk + cold = {rho_bul + rho_dsk + rho_cld:.3e}"
@@ -452,31 +412,23 @@ def validate_decomposition(directory, volume=None, hubble_h=HUBBLE_h):
         print(f"  (SMass.txt row count {len(stars):,} != {n:,}; "
               f"skipping stars-based checks)")
     else:
-        print("  (no SMass.txt — checked M_bulge <= M_baryonic only; dump "
-              "SMass for the full M_bulge <= M_stars <= M_baryonic check)")
+        print("  (no SMass.txt — checked M_bulge <= M_baryonic only)")
 
     if not ok:
-        print("  => violations found: the dumped masses are physically "
-              "inconsistent, not just differently sampled.")
+        print("  => violations found: the dumped masses are physically inconsistent.")
     print()
     return ok
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Plotting functions
+# ─────────────────────────────────────────────────────────────────────────────
+
 def plot_baryonic_mass_function(baryonic_all, baryonic_cen, baryonic_sat,
-                                 hubble_h, volume, save, out_dir,
-                                 whichimf=1):
-    """
-    Faithful reproduction of SAGE's '2.BaryonicMassFunction' figure:
-      - Bell et al. 2003 Schechter curve
-      - Model (all galaxies, black solid)
-      - Model - Centrals (blue dotted)        [if Type available]
-      - Model - Satellites (green dashed)      [if Type available]
-    All masses in Msun; volume in (Mpc/h)^3; binwidth fixed at 0.1 dex.
-    """
+                                 hubble_h, volume, save, out_dir, whichimf=1):
     binwidth = 0.1
     fig, ax = plt.subplots(figsize=(8.34, 6.25))
 
-    # ── Bell et al. 2003 BMF (h=1.0 converted to h=0.73), exactly as SAGE ──
     M = np.arange(7.0, 13.0, 0.01)
     Mstar = np.log10(5.3 * 1.0e10 / hubble_h / hubble_h)
     alpha = -1.21
@@ -490,7 +442,6 @@ def plot_baryonic_mass_function(baryonic_all, baryonic_cen, baryonic_sat,
         ax.plot(np.log10(10.0**M / 0.7 / 1.8), yval, 'g--', lw=1.5,
                 label='Bell et al. 2003')
 
-    # ── Model curves ──
     cen, phi = _mass_function(baryonic_all, binwidth, volume)
     if cen.size:
         ax.plot(cen, phi, 'k-', lw=2.0, label='Model')
@@ -524,21 +475,12 @@ def plot_baryonic_mass_function(baryonic_all, baryonic_cen, baryonic_sat,
 
 
 def plot_mass_functions(baryonic_data, bulge_data, disk_s_data, disk_sg_data,
-                       volume, n_bins, save, out_dir,
-                       hubble_h=0.73, whichimf=1,
-                       baryonic_cen=None, baryonic_sat=None):
-    r"""
-    Reproduce the SAGE baryonic mass function figure (Bell 2003 + Model +
-    Centrals + Satellites) and overplot the bulge and disk mass functions
-    so the decomposition can be compared directly against the baryonic MF.
-
-    All mass inputs are in physical Msun; volume in (Mpc/h)^3.
-    Uses the identical recipe as allresults: binwidth=0.1, phi=N/V/binwidth.
-    """
+                        volume, n_bins, save, out_dir,
+                        hubble_h=0.73, whichimf=1,
+                        baryonic_cen=None, baryonic_sat=None):
     binwidth = 0.1
     fig, ax = plt.subplots(figsize=(8.34, 6.25))
 
-    # ── Bell et al. 2003 reference (exact SAGE parametrisation) ──
     M = np.arange(7.0, 13.0, 0.01)
     Mstar = np.log10(5.3 * 1.0e10 / hubble_h / hubble_h)
     alpha = -1.21
@@ -552,7 +494,6 @@ def plot_mass_functions(baryonic_data, bulge_data, disk_s_data, disk_sg_data,
         ax.plot(np.log10(10.0**M / 0.7 / 1.8), yval, 'g--', lw=1.5,
                 label='Bell et al. 2003')
 
-    # ── Canonical baryonic MF (Model / Centrals / Satellites) ──
     cen, phi = _mass_function(baryonic_data, binwidth, volume)
     if cen.size:
         ax.plot(cen, phi, 'k-', lw=2.0, label='Model (baryonic)')
@@ -568,7 +509,6 @@ def plot_mass_functions(baryonic_data, bulge_data, disk_s_data, disk_sg_data,
             ax.plot(cen_s, phi_s, color='#228833', ls='--', lw=1.0,
                     label='Model - Satellites')
 
-    # ── New decomposition: bulge and disk mass functions overplotted ──
     for data, colour, label in [
         (bulge_data,  '#EE7733', r'$M_{\rm bulge}$'),
         (disk_s_data, '#EE6677', r'$M_{\rm disk}=M_\star-M_{\rm bulge}$'),
@@ -601,7 +541,7 @@ def plot_mass_functions(baryonic_data, bulge_data, disk_s_data, disk_sg_data,
     plt.close(fig)
 
 
-# ── Figure 1: five-panel timescales (3 top, 2 bottom centred) ────────────────
+# ── Figure 1: five-panel timescales ──────────────────────────────────────────
 def plot_five_panels(datasets, bins, log, save, out_dir):
     fig = plt.figure(figsize=(14, 9))
     gs_top = GridSpec(1, 3, figure=fig, left=0.06, right=0.97,
@@ -641,7 +581,7 @@ def plot_five_panels(datasets, bins, log, save, out_dir):
     plt.close(fig)
 
 
-# ── Figure 2: overlaid timescales ─────────────────────────────────────────────
+# ── Figure 2: base overlaid timescales ───────────────────────────────────────
 def plot_overlay(datasets, bins, log, save, out_dir):
     fig, ax = plt.subplots(figsize=(9, 5.5))
 
@@ -670,16 +610,14 @@ def plot_overlay(datasets, bins, log, save, out_dir):
     plt.close(fig)
 
 
-# ── Figure 4: bulge vs disk tdyn overlaid ────────────────────────────────────
+# ── Figure 4: bulge vs disk tdyn comparison ───────────────────────────────────
 def plot_tdyn_comparison(datasets, bins, log, save, out_dir):
-    """Dedicated comparison of bulge and disk dynamical times only."""
     compare_keys = ["tdyn_B_end", "tdyn_disk"]
     present = [k for k in compare_keys if datasets.get(k) is not None]
     if len(present) < 2:
         print("  Skipping tdyn comparison — need both tdyn_B_end and tdyn_disk.")
         return
 
-    # Build bins from just these two distributions
     local_bins = make_bins([datasets[k] for k in present],
                            int((bins[-1] - bins[0]) / (bins[1] - bins[0])) if not log else 80,
                            log)
@@ -713,11 +651,6 @@ def plot_tdyn_comparison(datasets, bins, log, save, out_dir):
 # ── Figures 3 & 5: generic property panels (bulge / disk) ────────────────────
 def plot_property_panels(datasets, keys, colours, labels, log, n_bins,
                          save, out_dir, out_name):
-    """Generic 1xN histogram panel figure for galaxy structural properties.
-
-    Keys ending in 'Radii' are treated as radii (kpc, plain tick labels);
-    everything else is treated as a mass (Msun, scientific-notation ticks).
-    """
     n = len(keys)
     fig, axes = plt.subplots(1, n, figsize=(4.7 * n, 4.5))
     fig.subplots_adjust(wspace=0.35)
@@ -770,6 +703,104 @@ def plot_property_panels(datasets, keys, colours, labels, log, n_bins,
     plt.close(fig)
 
 
+# ── Figure 7: extended timescale overlay ─────────────────────────────────────
+def plot_extended_overlay(datasets_base, directory, units, log, save, out_dir):
+    """
+    Like plot_overlay but includes all extra timescale dumps plus the derived
+    series  haloscale_tdyn = mass_ratio * tdyn_bulge  (row-wise product).
+
+    All files are read from the timescales/ subdirectory of `directory`.
+    Extra files loaded here: frac_halotime.txt, folding_tdyn.txt, mass_ratio.txt.
+    """
+    ts_dir = os.path.join(directory, "timescales")
+
+    # Reload ALL timescale files fresh from timescales/ (including base ones)
+    ext = {}
+    print(f"  Loading all timescale dumps from: {ts_dir}")
+    all_keys = ["dt", "tdyn_disk", "hubbletime", "halotime",
+                "frac_halotime", "folding_tdyn"]
+    for key in all_keys:
+        raw = load_file(ts_dir, key, quiet=True)
+        if raw is not None:
+            ext[key] = convert_to_myr(raw, units)
+            print(f"    {key:25s}: {len(ext[key]):>8,} values  "
+                  f"median = {np.median(ext[key]):.3e} Myr")
+        else:
+            ext[key] = None
+            print(f"    {key:25s}: not found – skipping")
+
+    # tdyn.txt is the bulge dynamical time — map to tdyn_B_end slot
+    tdyn_bulge_raw = load_file(ts_dir, "tdyn_B_end", quiet=True)
+    if tdyn_bulge_raw is None:
+        tdyn_bulge_raw = load_file(ts_dir, "tdyn", quiet=True)
+    if tdyn_bulge_raw is not None:
+        ext["tdyn_B_end"] = convert_to_myr(tdyn_bulge_raw, units)
+        print(f"    {'tdyn_B_end (bulge)':25s}: {len(ext['tdyn_B_end']):>8,} values  "
+              f"median = {np.median(ext['tdyn_B_end']):.3e} Myr")
+    else:
+        ext["tdyn_B_end"] = None
+        print(f"    {'tdyn_B_end (bulge)':25s}: not found – skipping")
+
+    # Derive haloscale_tdyn = mass_ratio × tdyn_bulge (row-wise)
+    mass_ratio_raw = load_raw(ts_dir, "mass_ratio")
+    tdyn_raw       = load_raw(ts_dir, "tdyn_B_end")
+    if tdyn_raw is None:
+        tdyn_raw = load_raw(ts_dir, "tdyn")   # your actual filename
+
+    if mass_ratio_raw is not None and tdyn_raw is not None:
+        n       = min(len(mass_ratio_raw), len(tdyn_raw))
+        derived = mass_ratio_raw[:n] * tdyn_raw[:n]
+        derived = convert_to_myr(derived, units)
+        derived = derived[np.isfinite(derived) & (derived > 0.0)]
+        ext["haloscale_tdyn"] = derived
+        print(f"    {'haloscale_tdyn (mass_ratio*tdyn)':35s}: "
+              f"{len(derived):>8,} values  "
+              f"median = {np.median(derived):.3e} Myr")
+    else:
+        ext["haloscale_tdyn"] = None
+        if mass_ratio_raw is None:
+            print("    WARNING: mass_ratio.txt not found — haloscale_tdyn skipped.")
+        if tdyn_raw is None:
+            print("    WARNING: tdyn_B_end.txt / tdyn.txt not found — haloscale_tdyn skipped.")
+
+    present = [k for k in EXTENDED_KEYS if ext.get(k) is not None]
+    if not present:
+        print("  No data for extended overlay — skipping.")
+        return
+
+    # Fixed x-axis range: 0.1 to 100000 Myr, always log-spaced
+    x_min, x_max = 0.01, 1e4
+    bins = np.logspace(np.log10(x_min), np.log10(x_max), 80)
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+
+    for key in present:
+        data  = ext[key]
+        col   = EXTENDED_COLOURS[key]
+        label = EXTENDED_LABELS[key] + rf"  (med $={np.median(data):.2g}$ Myr)"
+        ax.hist(data, bins=bins, color=col, alpha=0.35,
+                edgecolor=col, linewidth=0.6,
+                label=label, histtype="stepfilled")
+        ax.hist(data, bins=bins, color=col,
+                histtype="step", linewidth=1.5)
+        ax.axvline(np.median(data), color=col, ls=":", lw=1.3, alpha=0.9)
+
+    ax.set_xlabel("Time (Myr)")
+    ax.set_ylabel("Count")
+    ax.set_xscale("log")
+    ax.set_xlim(x_min, x_max)
+    ax.xaxis.set_major_formatter(ticker.ScalarFormatter())
+    ax.xaxis.get_major_formatter().set_scientific(False)
+    ax.legend(loc="upper right", fontsize=8.5, framealpha=0.7)
+
+    plt.tight_layout()
+    if save:
+        path = os.path.join(out_dir, "timescales_extended_overlay.png")
+        fig.savefig(path, bbox_inches="tight")
+        print(f"  Saved: {path}")
+    plt.close(fig)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
@@ -785,7 +816,7 @@ def main():
     parser.add_argument("--bins",  type=int, default=80,
                         help="Number of histogram bins")
     parser.add_argument("--volume", type=float, default=None,
-                        help="Simulation volume in (Mpc/h)^3 (if not provided, read from HDF5)")
+                        help="Simulation volume in (Mpc/h)^3")
     parser.add_argument("--snapshot", type=int, default=None,
                         help="Snapshot number for the HDF5 baryonic MF (default: last/z=0)")
     parser.add_argument("--hdf5-dir", type=str, default=None, dest="hdf5_dir",
@@ -802,7 +833,7 @@ def main():
     print(f"Log x-axis (timescales): {args.log},  bins: {args.bins}")
     print()
 
-    # ── Timescale files ───────────────────────────────────────────────────────
+    # ── Base timescale files ──────────────────────────────────────────────────
     print("--- Timescales ---")
     datasets = {}
     for key in KEYS:
@@ -824,6 +855,13 @@ def main():
         plot_tdyn_comparison(datasets, bins, args.log, args.save, args.dir)
     else:
         print("  No timescale files found – skipping timescale figures.")
+
+    # ── Extended timescale overlay (Figure 7) ─────────────────────────────────
+    print("--- Extended timescales overlay ---")
+    plot_extended_overlay(datasets, args.dir, args.units,
+                          args.log, args.save, args.dir)
+    # Note: plot_extended_overlay reads all files from args.dir/timescales/
+    print()
 
     # ── Bulge property files ──────────────────────────────────────────────────
     print("--- Bulge properties ---")
@@ -882,14 +920,11 @@ def main():
     # ── Mass function comparison ──────────────────────────────────────────────
     print("--- Mass function comparison ---")
 
-    # Text-dump-derived masses (physical Msun): used for the M*+Mcold validation
-    # overlay and as a fallback when no HDF5 is available.
     baryonic_dump = bulge_datasets.get('BMass_SG', None)
     bulge_dump    = bulge_datasets.get('BMass_B', None)
     disk_s_dump   = disk_datasets.get('DMass_S', None)
     disk_sg_dump  = disk_datasets.get('DMass_SG', None)
 
-    # Prefer HDF5 for the canonical baryonic MF (gives Type split + exact h/volume)
     hdf5_search_dir = args.hdf5_dir if args.hdf5_dir is not None else args.dir
     hdf5_bary = read_baryonic_by_type_from_hdf5(hdf5_search_dir,
                                                 snapshot=args.snapshot)
@@ -906,7 +941,6 @@ def main():
         if baryonic_cen is None:
             print("  (no Type field found – skipping centrals/satellites split)")
 
-        # Bulge & disk from the SAME HDF5 catalogue (single consistent sample)
         if hdf5_bary['bulge'] is not None:
             bulge_mass   = hdf5_bary['bulge']
             disk_s_mass  = hdf5_bary['disk_s']
@@ -917,7 +951,6 @@ def main():
             bulge_mass, disk_s_mass, disk_sg_mass = bulge_dump, disk_s_dump, disk_sg_dump
             print("  (no BulgeMass in HDF5 – bulge/disk fall back to text dumps)")
     else:
-        # Fall back entirely to text dumps; need a volume to normalise
         volume = args.volume
         hubble_h = HUBBLE_h
         baryonic_all = baryonic_dump
@@ -925,11 +958,9 @@ def main():
         baryonic_sat = None
         bulge_mass, disk_s_mass, disk_sg_mass = bulge_dump, disk_s_dump, disk_sg_dump
         if h5py is None:
-            print("  h5py not installed – cannot read HDF5 (install with: "
-                  "pip install h5py).")
+            print("  h5py not installed – cannot read HDF5 (install with: pip install h5py).")
         else:
-            print(f"  No model_*.hdf5 found under: "
-                  f"{os.path.abspath(hdf5_search_dir)}")
+            print(f"  No model_*.hdf5 found under: {os.path.abspath(hdf5_search_dir)}")
             print("  (point --hdf5-dir at your output/<sim>/ folder for the "
                   "Centrals/Satellites split and auto volume)")
         if volume is None and baryonic_all is None:
@@ -939,23 +970,19 @@ def main():
             print("  Have text-dump baryonic mass but no volume to normalise.")
             print("  Use --volume V (in (Mpc/h)^3) to enable the mass function plot.")
         else:
-            print(f"  Using text-dump masses, "
-                  f"volume = {volume:.3e} (Mpc/h)^3")
+            print(f"  Using text-dump masses, volume = {volume:.3e} (Mpc/h)^3")
 
     have_any = any(d is not None and len(d) > 0
                    for d in (baryonic_all, bulge_mass, disk_s_mass, disk_sg_mass))
 
-    # Physical sanity check on the dumps before plotting anything
     validate_decomposition(args.dir, volume=volume, hubble_h=hubble_h)
 
     if volume is not None and have_any:
         print("  Plotting baryonic mass function (SAGE style) + decomposition...")
-        # 1) Faithful reproduction of the SAGE figure on its own
         if baryonic_all is not None and len(baryonic_all) > 0:
             plot_baryonic_mass_function(
                 baryonic_all, baryonic_cen, baryonic_sat,
                 hubble_h, volume, args.save, args.dir, whichimf=whichimf)
-        # 2) Same figure with bulge/disk MFs overplotted for comparison
         plot_mass_functions(
             baryonic_all, bulge_mass, disk_s_mass, disk_sg_mass,
             volume, args.bins, args.save, args.dir,

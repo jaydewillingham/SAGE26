@@ -194,6 +194,13 @@ void deal_with_galaxy_merger(const int p,
  
     const double old_disk_radius = galaxies[merger_centralgal].DiskScaleRadius;
  
+
+    // FILE *fp = fopen("timescales/mass_ratio.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", mass_ratio);
+    //     fclose(fp);
+    // }
+
     /* ---- COMBINE GALAXIES ---- */
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
  
@@ -358,7 +365,82 @@ void grow_black_hole(const int merger_centralgal,
  
     /* Guard against zero or negative accretion time */
     if(accretiontime <= 0.0) accretiontime = dt;
- 
+
+
+    /* ---- timescales ---- */
+
+    // double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius,
+    //                                  galaxies[merger_centralgal].BulgeMass,
+    //                                  run_params); 
+
+    // FILE *fp = fopen("timescales/tdyn.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", tdyn);
+    //     fclose(fp);
+    // }
+    // fp = fopen("timescales/dt.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", dt);
+    //     fclose(fp);
+    // }
+    
+
+    // double halotime = galaxies[merger_centralgal].Rvir / galaxies[merger_centralgal].Vvir;
+    // fp = fopen("timescales/halotime.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", halotime);
+    //     fclose(fp);
+    // }
+
+    //const int snap = galaxies[merger_centralgal].SnapNum;
+    // FILE *fp;
+    // const double z  = run_params->ZZ[snap];
+    // const double Ez = sqrt(run_params->Omega * pow(1.0 + z, 3.0) + run_params->OmegaLambda);
+    // const double H0_code = run_params->Hubble;   /* H0 in internal code units, set during init */
+    // const double hubbletime = 0.1 / (H0_code * Ez);
+    // fp = fopen("timescales/hubbletime.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", hubbletime);
+    //     fclose(fp);
+    // }
+
+    // double tdyn_disk = 3 * galaxies[merger_centralgal].DiskScaleRadius / galaxies[merger_centralgal].Vvir;
+    // fp = fopen("timescales/tdyn_disk.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", tdyn_disk);
+    //     fclose(fp);
+    // }
+
+    // double estimated_mergertime =galaxies[merger_centralgal].MergTime;
+    // fp = fopen("timescales/estimated_mergertime.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", estimated_mergertime);
+    //     fclose(fp);
+    // }
+
+    // double frac_halotime = 0.1 * halotime;
+    // fp = fopen("timescales/frac_halotime.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", frac_halotime);
+    //     fclose(fp);
+    // }
+    
+    //double haloscale_tdyn = (galaxies[merger_centralgal].Mvir/galaxies[merger_satellitegal].Mvir) * tdyn;
+    // fp = fopen("timescales/haloscale_tdyn.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", haloscale_tdyn);
+    //     fclose(fp);
+    // }
+
+    // double folding_tdyn = 100.0 * tdyn;
+    // fp = fopen("timescales/folding_tdyn.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", folding_tdyn);
+    //     fclose(fp);
+    // }
+
+    /* ---- ---------------------- ---- */
+
     double BHaccreterate = BHaccrete / accretiontime;
  
     /* ---- EDDINGTON LIMITING ---- */
@@ -467,6 +549,7 @@ void quasar_mode_wind(const int gal, const double BHaccrete, struct GALAXY *gala
 
 void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, const struct params *run_params)
 {
+
     galaxies[t].ColdGas += galaxies[p].ColdGas;
     galaxies[t].MetalsColdGas += galaxies[p].MetalsColdGas;
 
