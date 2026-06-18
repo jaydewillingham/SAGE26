@@ -15,16 +15,9 @@ extern "C" {
     extern void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, const struct params *run_params);
     extern void make_bulge_from_burst(const int p, struct GALAXY *galaxies);
     extern  void grow_black_hole(int merger_centralgal, double mass_ratio, int from_instability, double dt, double BHaccrete_in, struct GALAXY *galaxies, const struct params *run_params);    
-    extern  void collisional_starburst_recipe(double mass_ratio,
-                        int merger_centralgal, int centralgal,
-                         double time, double dt, int halonr,
-                        int mode, int step,
-                         int burst_to_merger_bulge,
-                         double old_disk_radius,
-                         double stars_in,               // NEW: <0 = legacy
-                         double reheated_in,            // NEW: <0 = legacy
-                         struct GALAXY *galaxies,
-                         const struct params *run_params);
+    extern  void collisional_starburst_recipe(double mass_ratio, int merger_centralgal, int centralgal, double time, double dt, int halonr, 
+                                        int mode, int step, int burst_to_merger_bulge, double old_disk_radius, double stars_in, double reheated_in,            
+                                        struct GALAXY *galaxies, const struct params *run_params);
 
 #ifdef __cplusplus
 }

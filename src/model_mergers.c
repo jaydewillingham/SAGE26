@@ -46,7 +46,6 @@ double estimate_merging_time(const int sat_halo, const int mother_halo, const in
 
 }
 
-// ------ NEW ------- //
 static double merger_feedback_factor(const int merger_centralgal,
                        struct GALAXY *galaxies,
                        const struct params *run_params)
@@ -154,12 +153,7 @@ double calculate_merger_remnant_radius(const struct GALAXY *g1, const struct GAL
     return R_final;
 }
 
-/* ============================================================
- * deal_with_galaxy_merger  (REFACTORED)
- *
- * Key change: joint cold-gas budget computed before any
- * starburst or BH accretion call.
- * ============================================================ */
+
 void deal_with_galaxy_merger(const int p,
                               const int merger_centralgal,
                               const int centralgal,
@@ -193,13 +187,6 @@ void deal_with_galaxy_merger(const int p,
                                 0.5 * galaxies[merger_centralgal].StellarMass);
  
     const double old_disk_radius = galaxies[merger_centralgal].DiskScaleRadius;
- 
-
-    // FILE *fp = fopen("timescales/mass_ratio.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", mass_ratio);
-    //     fclose(fp);
-    // }
 
     /* ---- COMBINE GALAXIES ---- */
     add_galaxies_together(merger_centralgal, p, galaxies, run_params);
@@ -306,24 +293,11 @@ void deal_with_galaxy_merger(const int p,
     }
 }
 
-
-
-/* ============================================================
- * grow_black_hole  (REFACTORED)
- *
- * New parameter: double BHaccrete_in
- *   >= 0  → use this pre-scaled demand directly (joint-budget path)
- *   <  0  → compute demand internally as before (legacy path)
- *
- * Everything after the demand calculation is unchanged:
- *   accretiontime, Eddington limiting, ColdGas deduction,
- *   per-channel tracking, quasar_mode_wind.
- * ============================================================ */
 void grow_black_hole(const int merger_centralgal,
                      const double mass_ratio,
                      const int from_instability,
                      const double dt,
-                     const double BHaccrete_in,          /* NEW */
+                     const double BHaccrete_in,         
                      struct GALAXY *galaxies,
                      const struct params *run_params)
 {
@@ -362,84 +336,12 @@ void grow_black_hole(const int merger_centralgal,
     } else {
         accretiontime = dt;
     }
- 
+    
+    accretiontime = 0.1 * galaxies[merger_centralgal].Rvir / galaxies[merger_centralgal].Vvir;
+
     /* Guard against zero or negative accretion time */
     if(accretiontime <= 0.0) accretiontime = dt;
 
-
-    /* ---- timescales ---- */
-
-    // double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius,
-    //                                  galaxies[merger_centralgal].BulgeMass,
-    //                                  run_params); 
-
-    // FILE *fp = fopen("timescales/tdyn.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", tdyn);
-    //     fclose(fp);
-    // }
-    // fp = fopen("timescales/dt.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", dt);
-    //     fclose(fp);
-    // }
-    
-
-    // double halotime = galaxies[merger_centralgal].Rvir / galaxies[merger_centralgal].Vvir;
-    // fp = fopen("timescales/halotime.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", halotime);
-    //     fclose(fp);
-    // }
-
-    //const int snap = galaxies[merger_centralgal].SnapNum;
-    // FILE *fp;
-    // const double z  = run_params->ZZ[snap];
-    // const double Ez = sqrt(run_params->Omega * pow(1.0 + z, 3.0) + run_params->OmegaLambda);
-    // const double H0_code = run_params->Hubble;   /* H0 in internal code units, set during init */
-    // const double hubbletime = 0.1 / (H0_code * Ez);
-    // fp = fopen("timescales/hubbletime.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", hubbletime);
-    //     fclose(fp);
-    // }
-
-    // double tdyn_disk = 3 * galaxies[merger_centralgal].DiskScaleRadius / galaxies[merger_centralgal].Vvir;
-    // fp = fopen("timescales/tdyn_disk.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", tdyn_disk);
-    //     fclose(fp);
-    // }
-
-    // double estimated_mergertime =galaxies[merger_centralgal].MergTime;
-    // fp = fopen("timescales/estimated_mergertime.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", estimated_mergertime);
-    //     fclose(fp);
-    // }
-
-    // double frac_halotime = 0.1 * halotime;
-    // fp = fopen("timescales/frac_halotime.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", frac_halotime);
-    //     fclose(fp);
-    // }
-    
-    //double haloscale_tdyn = (galaxies[merger_centralgal].Mvir/galaxies[merger_satellitegal].Mvir) * tdyn;
-    // fp = fopen("timescales/haloscale_tdyn.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", haloscale_tdyn);
-    //     fclose(fp);
-    // }
-
-    // double folding_tdyn = 100.0 * tdyn;
-    // fp = fopen("timescales/folding_tdyn.txt", "a");
-    // if(fp != NULL) {
-    //     fprintf(fp, "%g\n", folding_tdyn);
-    //     fclose(fp);
-    // }
-
-    /* ---- ---------------------- ---- */
 
     double BHaccreterate = BHaccrete / accretiontime;
  
@@ -458,8 +360,7 @@ void grow_black_hole(const int merger_centralgal,
  
     BHaccrete = BHaccreterate * accretiontime;
  
-    /* Re-cap to ColdGas in case Eddington limiting didn't already do it
-     * (should be rare after joint budget, but be defensive). */
+    /* Re-cap to ColdGas in case Eddington limiting didn't already do it */
     if(BHaccrete > galaxies[merger_centralgal].ColdGas)
         BHaccrete = galaxies[merger_centralgal].ColdGas;
  
@@ -566,7 +467,7 @@ void add_galaxies_together(const int t, const int p, struct GALAXY *galaxies, co
     galaxies[t].MetalsICS += galaxies[p].MetalsICS;
 
     galaxies[t].BlackHoleMass += galaxies[p].BlackHoleMass;
-    galaxies[t].BHMergerMass[galaxies[t].SnapNum] += galaxies[p].BlackHoleMass; // jayde note Track BH mass growth from mergers separately
+    galaxies[t].BHMergerMass[galaxies[t].SnapNum] += galaxies[p].BlackHoleMass; 
 
     //if BHExsituGrowthOn is enabled, we track the contributon to BH growth from satellites after merger.
     if(run_params->BHExsituGrowthOn) {
@@ -662,15 +563,7 @@ void make_bulge_from_burst(const int p, struct GALAXY *galaxies)
     }
 }
 
-/* ============================================================
- * collisional_starburst_recipe  (REFACTORED)
- *
- * New parameters: double stars_in, double reheated_in
- *   Both >= 0  → use pre-scaled demand directly (joint-budget path)
- *   Both <  0  → compute demand internally as before (legacy path)
- *
- * Everything from update_from_star_formation onward is unchanged.
- * ============================================================ */
+
 void collisional_starburst_recipe(const double mass_ratio,
                                   const int merger_centralgal,
                                   const int centralgal,
@@ -789,8 +682,6 @@ void collisional_starburst_recipe(const double mass_ratio,
     } else {
         ejected_mass = 0.0;
     }
- 
-    /* ---- EVERYTHING FROM HERE IS UNCHANGED ---- */
  
     galaxies[merger_centralgal].SfrBulge[step]              += stars / dt;
     galaxies[merger_centralgal].SfrBulgeColdGas[step]       += galaxies[merger_centralgal].ColdGas;
