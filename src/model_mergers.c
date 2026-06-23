@@ -337,7 +337,30 @@ void grow_black_hole(const int merger_centralgal,
         accretiontime = dt;
     }
     
-    accretiontime = 0.1 * galaxies[merger_centralgal].Rvir / galaxies[merger_centralgal].Vvir;
+    double tdyn = dynamical_time(galaxies[merger_centralgal].BulgeRadius,
+                                     galaxies[merger_centralgal].BulgeMass,
+                                     run_params);
+
+    //accretiontime = tdyn * (1000.0 * 0.3722 * log(1.0 / mass_ratio) / pow(mass_ratio, 1));
+    //accretiontime = galaxies[merger_centralgal].ColdGas * tdyn  * pow(mass_ratio, 0.7);
+    //accretiontime = 10000 * tdyn  * pow(mass_ratio, 0.7);
+
+    if (galaxies[merger_centralgal].BulgeMass<=0.0) {accretiontime = tdyn;}
+    if (galaxies[merger_centralgal].BlackHoleMass<=0.0) {accretiontime = tdyn;}
+    if (galaxies[merger_centralgal].BulgeMass<=0.0 || galaxies[merger_centralgal].BlackHoleMass<=0.0) {
+        accretiontime = 1 * tdyn;
+    } else {
+        accretiontime = 1 * tdyn * pow(galaxies[merger_centralgal].BulgeMass / galaxies[merger_centralgal].BlackHoleMass, 0.5);
+    }
+
+    //if (accretiontime < tdyn) accretiontime = tdyn;
+    
+    // FILE *fp = fopen("timescales/tdyn_BRAHMA_pow.txt", "a");
+    // if(fp != NULL) {
+    //     fprintf(fp, "%g\n", accretiontime);
+    //     fclose(fp);
+    // }
+
 
     /* Guard against zero or negative accretion time */
     if(accretiontime <= 0.0) accretiontime = dt;

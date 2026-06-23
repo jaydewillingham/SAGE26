@@ -392,7 +392,7 @@ def plot_panel_a(data, snap_col, output_file,
     ax.annotate(
         rf'$\dot{{M}}_{{\rm BH}} = {LRD_BHAR_DEFAULT}\,M_\odot\,\mathrm{{yr}}^{{-1}}$',
         xy=(x_hi - 0.2, np.log10(LRD_BHAR_DEFAULT) + 0.15),
-        fontsize=10.5, color='#C62828', ha='right',
+        fontsize=12, color='#C62828', ha='right',
     )
 
     if show_lrd:
@@ -408,7 +408,7 @@ def plot_panel_a(data, snap_col, output_file,
 
     redshift = z_override if z_override is not None else snap_to_z(snap_col)
     ax.text(0.97, 0.04, rf'$z = {redshift:.1f}$',
-            transform=ax.transAxes, ha='right', va='bottom', fontsize=15)
+            transform=ax.transAxes, ha='right', va='bottom', fontsize=16)
    # ax.text(0.03, 0.97, 'a', transform=ax.transAxes, ha='left', va='top',
     #        fontsize=18, fontweight='bold')
 
@@ -429,7 +429,7 @@ def plot_panel_a(data, snap_col, output_file,
                 Line2D([0], [0], marker='o', color='w',
                        markerfacecolor='#1565C0', markersize=7,
                        label=r'LRD ($f_{\rm BH}<3\%$)'))
-    ax.legend(handles=handles, loc='upper left', fontsize=10.5,
+    ax.legend(handles=handles, loc='upper left', fontsize=12,
               handlelength=1.6, handletextpad=0.5)
 
     plt.tight_layout()

@@ -10,8 +10,7 @@ Read dt.txt, tdyn_B_end.txt, tdyn_disk.txt, hubbletime.txt, halotime.txt and pro
   - Figure 5: three-panel histogram of disk properties
   - Figure 6: mass function comparison (baryonic, bulge, disk)
   - Figure 7: extended timescale overlay — all dumps including
-              estimated_mergertime, frac_halotime, folding_tdyn, plus
-              haloscale_tdyn = Mvir_ratio.txt * tdyn_B_end.txt (row-wise)
+              tdyn_BRAHMA (loaded directly from tdyn_BRAHMA.txt)
 
 Usage:
     python plot_timescales.py [--dir PATH] [--units {code,myr}] [--log] [--save] [--volume V]
@@ -99,31 +98,26 @@ KEYS = ["dt", "tdyn_B_end", "tdyn_disk", "hubbletime", "halotime"]
 
 # ── Extended timescale metadata (Figure 7) ────────────────────────────────────
 EXTENDED_COLOURS = {
-    "dt":             "#4477AA",   # blue
-    "tdyn_B_end":     "#EE6677",   # red
-    "tdyn_disk":      "#AA3377",   # purple
-    "hubbletime":     "#228833",   # green
-    "halotime":       "#CCBB44",   # yellow
-    "frac_halotime":  "#66CCEE",   # cyan
-    "folding_tdyn":   "#BBBBBB",   # grey
-    "haloscale_tdyn": "#994455",   # deep rose  (mass_ratio × tdyn)
+    "dt":            "#4477AA",   # blue
+    "tdyn_B_end":    "#EE6677",   # red
+    "tdyn_disk":     "#AA3377",   # purple
+    "hubbletime":    "#228833",   # green
+    "halotime":      "#CCBB44",   # yellow
+    "frac_halotime": "#66CCEE",   # cyan
+    "tdyn_BRAHMA":"#994455",   # deep rose
 }
 EXTENDED_LABELS = {
-    "dt":             r"$\Delta t$",
-    "tdyn_B_end":     r"$t_{\rm dyn}$ (bulge)",
-    "tdyn_disk":      r"$t_{\rm dyn}$ (disk)",
-    "hubbletime":     r"$0.1/H(z)$",
-    "halotime":       r"$t_{\rm halo} = R_{\rm vir}/V_{\rm vir}$",
-    "frac_halotime":  r"$0.1\,t_{\rm halo}$",
-    "folding_tdyn":   r"$100\,t_{\rm dyn}$ (bulge)",
-    "haloscale_tdyn": r"$(m_{\rm sat}/m_{\rm cen})\,t_{\rm dyn,bulge}$",
+    "dt":            r"$\Delta t$",
+    "tdyn_B_end":    r"$t_{\rm dyn}$ (bulge)",
+    "tdyn_disk":     r"$t_{\rm dyn}$ (disk)",
+    "hubbletime":    r"$0.1/H(z)$",
+    "halotime":      r"$t_{\rm halo} = R_{\rm vir}/V_{\rm vir}$",
+    "frac_halotime": r"$0.1\,t_{\rm halo}$",
+    "tdyn_BRAHMA":r"$t_{\rm dyn,BRAHMA}$",
 }
 EXTENDED_KEYS = [
     "dt", "tdyn_B_end", "tdyn_disk", "halotime",
-    "frac_halotime",
-    # "hubbletime",     # 0.1/H(z) — commented out
-    # "folding_tdyn",   # 100 * tdyn_bulge — commented out
-    # "haloscale_tdyn", # (mass_ratio) * tdyn_bulge — commented out
+    "frac_halotime", "tdyn_BRAHMA",
 ]
 
 # ── Bulge property metadata ───────────────────────────────────────────────────
@@ -536,7 +530,7 @@ def plot_mass_functions(baryonic_data, bulge_data, disk_s_data, disk_sg_data,
     plt.tight_layout()
     if save:
         path = os.path.join(out_dir, "mass_functions_comparison.png")
-        fig.savefig(path)
+        fig.savefig(path, bbox_inches="tight")
         print(f"  Saved: {path}")
     plt.close(fig)
 
@@ -707,18 +701,17 @@ def plot_property_panels(datasets, keys, colours, labels, log, n_bins,
 def plot_extended_overlay(datasets_base, directory, units, log, save, out_dir):
     """
     Like plot_overlay but includes all extra timescale dumps plus the derived
-    series  haloscale_tdyn = mass_ratio * tdyn_bulge  (row-wise product).
+    tdyn_BRAHMA loaded directly from tdyn_BRAHMA.txt.
 
     All files are read from the timescales/ subdirectory of `directory`.
-    Extra files loaded here: frac_halotime.txt, folding_tdyn.txt, mass_ratio.txt.
+    Extra files loaded here: frac_halotime.txt, tdyn_BRAHMA.txt.
     """
     ts_dir = os.path.join(directory, "timescales")
 
     # Reload ALL timescale files fresh from timescales/ (including base ones)
     ext = {}
     print(f"  Loading all timescale dumps from: {ts_dir}")
-    all_keys = ["dt", "tdyn_disk", "hubbletime", "halotime",
-                "frac_halotime", "folding_tdyn"]
+    all_keys = ["dt", "tdyn_disk", "hubbletime", "halotime", "frac_halotime"]
     for key in all_keys:
         raw = load_file(ts_dir, key, quiet=True)
         if raw is not None:
@@ -729,7 +722,7 @@ def plot_extended_overlay(datasets_base, directory, units, log, save, out_dir):
             ext[key] = None
             print(f"    {key:25s}: not found – skipping")
 
-    # tdyn.txt is the bulge dynamical time — map to tdyn_B_end slot
+    # tdyn_B_end.txt is the bulge dynamical time
     tdyn_bulge_raw = load_file(ts_dir, "tdyn_B_end", quiet=True)
     if tdyn_bulge_raw is None:
         tdyn_bulge_raw = load_file(ts_dir, "tdyn", quiet=True)
@@ -741,34 +734,23 @@ def plot_extended_overlay(datasets_base, directory, units, log, save, out_dir):
         ext["tdyn_B_end"] = None
         print(f"    {'tdyn_B_end (bulge)':25s}: not found – skipping")
 
-    # Derive haloscale_tdyn = mass_ratio × tdyn_bulge (row-wise)
-    mass_ratio_raw = load_raw(ts_dir, "mass_ratio")
-    tdyn_raw       = load_raw(ts_dir, "tdyn_B_end")
-    if tdyn_raw is None:
-        tdyn_raw = load_raw(ts_dir, "tdyn")   # your actual filename
-
-    if mass_ratio_raw is not None and tdyn_raw is not None:
-        n       = min(len(mass_ratio_raw), len(tdyn_raw))
-        derived = mass_ratio_raw[:n] * tdyn_raw[:n]
-        derived = convert_to_myr(derived, units)
-        derived = derived[np.isfinite(derived) & (derived > 0.0)]
-        ext["haloscale_tdyn"] = derived
-        print(f"    {'haloscale_tdyn (mass_ratio*tdyn)':35s}: "
-              f"{len(derived):>8,} values  "
-              f"median = {np.median(derived):.3e} Myr")
+    # Load tdyn_BRAHMA directly from file
+    tdyn_BRAHMA_raw = load_file(ts_dir, "tdyn_BRAHMA", quiet=True)
+    if tdyn_BRAHMA_raw is not None:
+        ext["tdyn_BRAHMA"] = convert_to_myr(tdyn_BRAHMA_raw, units)
+        print(f"    {'tdyn_BRAHMA':35s}: "
+              f"{len(ext['tdyn_BRAHMA']):>8,} values  "
+              f"median = {np.median(ext['tdyn_BRAHMA']):.3e} Myr")
     else:
-        ext["haloscale_tdyn"] = None
-        if mass_ratio_raw is None:
-            print("    WARNING: mass_ratio.txt not found — haloscale_tdyn skipped.")
-        if tdyn_raw is None:
-            print("    WARNING: tdyn_B_end.txt / tdyn.txt not found — haloscale_tdyn skipped.")
+        ext["tdyn_BRAHMA"] = None
+        print("    WARNING: tdyn_BRAHMA.txt not found — tdyn_BRAHMA skipped.")
 
     present = [k for k in EXTENDED_KEYS if ext.get(k) is not None]
     if not present:
         print("  No data for extended overlay — skipping.")
         return
 
-    # Fixed x-axis range: 0.1 to 100000 Myr, always log-spaced
+    # Fixed x-axis range: 0.01 to 10000 Myr, always log-spaced
     x_min, x_max = 0.01, 1e4
     bins = np.logspace(np.log10(x_min), np.log10(x_max), 80)
 

@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 plt.rcParams["figure.figsize"] = (8.34, 6.25)
-plt.rcParams["figure.dpi"] = 96
+plt.rcParams["figure.dpi"] = 600
 plt.rcParams["font.size"] = 14
 plt.rcParams['figure.facecolor'] = 'white'
 plt.rcParams['axes.facecolor'] = 'white'
